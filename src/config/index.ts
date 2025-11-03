@@ -25,7 +25,7 @@ export function loadConfig(): AppConfig {
         asterBaseUrl: process.env.ASTER_BASE_URL || 'https://fapi.asterdex.com',
         asterBasePath: process.env.ASTER_BASE_PATH || '/fapi/v1',
         marketsRefreshMs: Number(process.env.MARKETS_REFRESH_MS || 24 * 60 * 60 * 1000),
-        loopIntervalMs: Number(process.env.LOOP_INTERVAL_MS || 5 * 60 * 1000),
+        loopIntervalMs: Number(process.env.LOOP_INTERVAL_MS || 10 * 60 * 1000),
         asterApiKey: process.env.ASTER_API_KEY,
         asterApiSecret: process.env.ASTER_API_SECRET
     };
