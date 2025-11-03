@@ -37,14 +37,19 @@ const PortfolioResponseSchema = z.object({ summary: z.object({ baseBalance: z.nu
 async function fetchPairs() {
     try {
         const res = await fetch('/api/pairs', { cache: 'no-store' })
-        if (!res.ok) return { asOf: Date.now(), pairs: [] }
+        if (!res.ok) {
+            console.error('Pairs API returned status:', res.status)
+            return { asOf: Date.now(), pairs: [] }
+        }
         const data = await res.json()
+        console.log('Pairs API response:', data)
         const parsed = PairsResponseSchema.safeParse(data)
         if (parsed.success) {
+            console.log('Parsed pairs successfully, count:', parsed.data.pairs?.length || 0)
             return parsed.data
         } else {
             console.error('Failed to parse pairs data:', parsed.error)
-            return { asOf: Date.now(), pairs: Array.isArray(data?.pairs) ? data.pairs : [] }
+            return { asOf: data?.asOf || Date.now(), pairs: Array.isArray(data?.pairs) ? data.pairs : [] }
         }
     } catch (err) {
         console.error('Error fetching pairs:', err)
