@@ -138,6 +138,7 @@ export default async function DashboardPage() {
 
     // Calculate some derived metrics
     const totalPairs = pairs.length
+    const overviewPairs = [...pairs].sort((a, b) => b.scores.composite - a.scores.composite)
     const activePositions = positions.filter(p => Math.abs(p.netQty) > 0.0001).length
     const profitablePairs = pairPerformances.filter(p => p.upnl > 0).length
     const totalExposure = summary.totalNotional
@@ -254,7 +255,7 @@ export default async function DashboardPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {pairs.slice(0, 10).map((p) => (
+                                {overviewPairs.slice(0, 10).map((p) => (
                                     <tr key={`${p.long}|${p.short}`} className="border-b border-border/50 hover:bg-muted/50">
                                         <td className="px-4 py-3 font-medium">
                                             <div className="flex items-center gap-2">

@@ -109,11 +109,21 @@ export function startHttpServer(portFromEnv?: number) {
     app.get('/api/portfolio', async (_req: Request, res: Response) => {
         try {
             const ordersPath = await resolveFromSimData('orders.jsonl');
-            const pairsPath = await resolveFromSimData('pairs.json');
+            const pairsJsonlPath = await resolveFromSimData('pairs.jsonl');
+            const pairsJsonPath = await resolveFromSimData('pairs.json');
             const marketsPath = await resolveFromSimData('markets.json');
             const [ordersRaw, pairsRaw, marketsRaw] = await Promise.all([
                 fs.readFile(ordersPath, 'utf8'),
-                fs.readFile(pairsPath, 'utf8').catch(() => 'null'),
+                (async () => {
+                    try {
+                        const raw = await fs.readFile(pairsJsonlPath, 'utf8');
+                        const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                        const last = lines.length > 0 ? JSON.parse(lines[lines.length - 1]) : null;
+                        return JSON.stringify(last?.data ?? null);
+                    } catch {
+                        return await fs.readFile(pairsJsonPath, 'utf8').catch(() => 'null');
+                    }
+                })(),
                 fs.readFile(marketsPath, 'utf8').catch(() => 'null'),
             ]);
             const pairs = pairsRaw && pairsRaw !== 'null' ? JSON.parse(pairsRaw) : { pairs: [] as any[] };
