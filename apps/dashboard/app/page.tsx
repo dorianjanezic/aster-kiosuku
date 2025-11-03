@@ -32,38 +32,24 @@ const PositionSchema = z.object({ symbol: z.string(), netQty: z.number(), avgEnt
 const PairPerfSchema = z.object({ key: z.string(), long: z.string(), short: z.string(), upnl: z.number(), notionalEntry: z.number(), percent: z.number() })
 const PortfolioResponseSchema = z.object({ summary: z.object({ baseBalance: z.number(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }), positions: z.array(PositionSchema), pairs: z.array(PairPerfSchema) })
 
-function getBaseUrl() {
-    if (process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL && process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL.length > 0) {
-        return process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL
-    }
-    if (process.env.VERCEL_URL && process.env.VERCEL_URL.length > 0) {
-        return `https://${process.env.VERCEL_URL}`
-    }
-    return 'http://localhost:3000'
-}
+// Use relative URLs within Next.js app router
 
 async function fetchPairs() {
-    const base = getBaseUrl()
-    const url = new URL('/api/pairs', base).toString()
-    const res = await fetch(url, { next: { revalidate: 5 } })
+    const res = await fetch('/api/pairs', { cache: 'no-store' })
     if (!res.ok) throw new Error('Failed to fetch pairs')
     const data = await res.json()
     return PairsResponseSchema.parse(data)
 }
 
 async function fetchCycles() {
-    const base = getBaseUrl()
-    const url = new URL('/api/cycles', base).toString()
-    const res = await fetch(url, { next: { revalidate: 5 } })
+    const res = await fetch('/api/cycles', { cache: 'no-store' })
     if (!res.ok) throw new Error('Failed to fetch cycles')
     const data = await res.json()
     return SlimCyclesResponseSchema.parse(data)
 }
 
 async function fetchPortfolio() {
-    const base = getBaseUrl()
-    const url = new URL('/api/portfolio', base).toString()
-    const res = await fetch(url, { next: { revalidate: 5 } })
+    const res = await fetch('/api/portfolio', { cache: 'no-store' })
     if (!res.ok) throw new Error('Failed to fetch portfolio')
     const data = await res.json()
     return PortfolioResponseSchema.parse(data)
@@ -210,6 +196,11 @@ export default async function DashboardPage() {
                                             <span className="text-xs text-muted-foreground">
                                                 {new Date(e.ts).toLocaleDateString()}
                                             </span>
+                                            {!isDecision && (
+                                                <span className="ml-auto text-xs text-muted-foreground">
+                                                    Equity: ${summary.equity.toFixed(2)}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-sm text-white leading-relaxed w-full whitespace-nowrap overflow-hidden">
                                             {teaser(content, 200)}
