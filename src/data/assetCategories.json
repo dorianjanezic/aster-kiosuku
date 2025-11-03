@@ -1,0 +1,1086 @@
+{
+    "BTC": {
+        "sector": "Layer-1",
+        "ecosystem": "Bitcoin",
+        "type": "Base Coin",
+        "narratives": [
+            "StoreOfValue"
+        ]
+    },
+    "ETH": {
+        "sector": "Layer-1",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "SmartContracts",
+            "EVM"
+        ]
+    },
+    "SOL": {
+        "sector": "Layer-1",
+        "ecosystem": "Solana",
+        "type": "Utility",
+        "narratives": [
+            "HighThroughput"
+        ]
+    },
+    "BNB": {
+        "sector": "Layer-1",
+        "ecosystem": "BNB Chain",
+        "type": "Utility"
+    },
+    "AVAX": {
+        "sector": "Layer-1",
+        "ecosystem": "Avalanche",
+        "type": "Utility"
+    },
+    "ADA": {
+        "sector": "Layer-1",
+        "ecosystem": "Cardano",
+        "type": "Utility"
+    },
+    "DOT": {
+        "sector": "Layer-1",
+        "ecosystem": "Polkadot",
+        "type": "Utility",
+        "narratives": [
+            "Interoperability"
+        ]
+    },
+    "ATOM": {
+        "sector": "Layer-1",
+        "ecosystem": "Cosmos",
+        "type": "Utility",
+        "narratives": [
+            "Interoperability"
+        ]
+    },
+    "NEAR": {
+        "sector": "Layer-1",
+        "ecosystem": "NEAR",
+        "type": "Utility"
+    },
+    "APT": {
+        "sector": "Layer-1",
+        "ecosystem": "Aptos",
+        "type": "Utility"
+    },
+    "SUI": {
+        "sector": "Layer-1",
+        "ecosystem": "Sui",
+        "type": "Utility"
+    },
+    "TON": {
+        "sector": "Layer-1",
+        "ecosystem": "TON",
+        "type": "Utility"
+    },
+    "TRX": {
+        "sector": "Layer-1",
+        "ecosystem": "Tron",
+        "type": "Utility"
+    },
+    "ARB": {
+        "sector": "Layer-2",
+        "ecosystem": "Arbitrum",
+        "type": "Utility"
+    },
+    "OP": {
+        "sector": "Layer-2",
+        "ecosystem": "Optimism",
+        "type": "Utility"
+    },
+    "MATIC": {
+        "sector": "Layer-2",
+        "ecosystem": "Polygon",
+        "type": "Utility"
+    },
+    "BASE": {
+        "sector": "Layer-2",
+        "ecosystem": "Base",
+        "type": "Utility"
+    },
+    "USDT": {
+        "sector": "Stablecoin",
+        "ecosystem": "Multi",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "Tether",
+            "peg": "USD"
+        }
+    },
+    "USDC": {
+        "sector": "Stablecoin",
+        "ecosystem": "Multi",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "Circle",
+            "peg": "USD"
+        }
+    },
+    "DAI": {
+        "sector": "Stablecoin",
+        "ecosystem": "Ethereum",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "MakerDAO",
+            "peg": "USD"
+        }
+    },
+    "TUSD": {
+        "sector": "Stablecoin",
+        "ecosystem": "Multi",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "TrueUSD",
+            "peg": "USD"
+        }
+    },
+    "FDUSD": {
+        "sector": "Stablecoin",
+        "ecosystem": "Multi",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "First Digital",
+            "peg": "USD"
+        }
+    },
+    "USDE": {
+        "sector": "Stablecoin",
+        "ecosystem": "Ethereum",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "Ethena",
+            "peg": "USD"
+        }
+    },
+    "UNI": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "AAVE": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Lending"
+        ]
+    },
+    "MKR": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "RWA",
+            "Lending"
+        ]
+    },
+    "LDO": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "LSD"
+        ]
+    },
+    "RPL": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "LSD"
+        ]
+    },
+    "SWISE": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "LSD"
+        ]
+    },
+    "PENDLE": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Yield"
+        ]
+    },
+    "GMX": {
+        "sector": "DeFi",
+        "ecosystem": "Arbitrum",
+        "type": "Utility",
+        "narratives": [
+            "Perp DEX"
+        ]
+    },
+    "DYDX": {
+        "sector": "DeFi",
+        "ecosystem": "dYdX",
+        "type": "Utility",
+        "narratives": [
+            "Perp DEX"
+        ]
+    },
+    "PERP": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Perp DEX"
+        ]
+    },
+    "SUSHI": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "CRV": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "BAL": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "CAKE": {
+        "sector": "DeFi",
+        "ecosystem": "BNB Chain",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "1INCH": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX Aggregator"
+        ]
+    },
+    "SNX": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Derivatives"
+        ]
+    },
+    "INJ": {
+        "sector": "DeFi",
+        "ecosystem": "Injective",
+        "type": "Utility",
+        "narratives": [
+            "Perp DEX"
+        ]
+    },
+    "RUNE": {
+        "sector": "DeFi",
+        "ecosystem": "Thorchain",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM",
+            "Interoperability"
+        ]
+    },
+    "LINK": {
+        "sector": "Oracles",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "BAND": {
+        "sector": "Oracles",
+        "ecosystem": "Cosmos",
+        "type": "Utility"
+    },
+    "XMR": {
+        "sector": "Privacy",
+        "ecosystem": "Monero",
+        "type": "Base Coin"
+    },
+    "ZEC": {
+        "sector": "Privacy",
+        "ecosystem": "Zcash",
+        "type": "Base Coin"
+    },
+    "SCRT": {
+        "sector": "Privacy",
+        "ecosystem": "Cosmos",
+        "type": "Utility"
+    },
+    "DOGE": {
+        "sector": "Meme",
+        "ecosystem": "Dogecoin",
+        "type": "Base Coin"
+    },
+    "SHIB": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "PEPE": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "FLOKI": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "BONK": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "WIF": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "RNDR": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DePIN",
+            "AI"
+        ]
+    },
+    "FET": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "AI"
+        ]
+    },
+    "GRT": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Indexing"
+        ]
+    },
+    "OCEAN": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Data"
+        ]
+    },
+    "TAO": {
+        "sector": "AI",
+        "ecosystem": "Bittensor",
+        "type": "Utility",
+        "narratives": [
+            "AI",
+            "DePIN"
+        ]
+    },
+    "NMR": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "ML"
+        ]
+    },
+    "ONDO": {
+        "sector": "RWA",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "RWA"
+        ]
+    },
+    "POLYX": {
+        "sector": "RWA",
+        "ecosystem": "Polymesh",
+        "type": "Utility",
+        "narratives": [
+            "RWA"
+        ]
+    },
+    "HNT": {
+        "sector": "DePIN",
+        "ecosystem": "Helium",
+        "type": "Utility"
+    },
+    "IOTX": {
+        "sector": "DePIN",
+        "ecosystem": "IoTeX",
+        "type": "Utility"
+    },
+    "STX": {
+        "sector": "Layer-2",
+        "ecosystem": "Bitcoin",
+        "type": "Utility",
+        "narratives": [
+            "Bitcoin L2"
+        ]
+    },
+    "XRP": {
+        "sector": "Infrastructure",
+        "ecosystem": "XRP Ledger",
+        "type": "Base Coin",
+        "narratives": [
+            "Payments"
+        ]
+    },
+    "XLM": {
+        "sector": "Infrastructure",
+        "ecosystem": "Stellar",
+        "type": "Base Coin",
+        "narratives": [
+            "Payments"
+        ]
+    },
+    "META": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Social"
+        ]
+    },
+    "MSFT": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Software",
+            "AI"
+        ]
+    },
+    "GOOG": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Search",
+            "AI"
+        ]
+    },
+    "QQQ": {
+        "sector": "ETF",
+        "ecosystem": "US",
+        "type": "ETF",
+        "narratives": [
+            "Index",
+            "Tech",
+            "NASDAQ-100"
+        ]
+    },
+    "NVDA": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Semiconductor",
+            "AI"
+        ]
+    },
+    "TSLA": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Auto",
+            "EV",
+            "Tech"
+        ]
+    },
+    "AAPL": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Consumer Electronics"
+        ]
+    },
+    "AMZN": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "E-commerce",
+            "Cloud"
+        ]
+    },
+    "SBET": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Stock"
+        ]
+    },
+    "BTC": {
+        "sector": "Layer-1",
+        "ecosystem": "Bitcoin",
+        "type": "Base Coin",
+        "narratives": [
+            "StoreOfValue"
+        ]
+    },
+    "ETH": {
+        "sector": "Layer-1",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "SmartContracts",
+            "EVM"
+        ]
+    },
+    "SOL": {
+        "sector": "Layer-1",
+        "ecosystem": "Solana",
+        "type": "Utility",
+        "narratives": [
+            "HighThroughput"
+        ]
+    },
+    "BNB": {
+        "sector": "Layer-1",
+        "ecosystem": "BNB Chain",
+        "type": "Utility"
+    },
+    "AVAX": {
+        "sector": "Layer-1",
+        "ecosystem": "Avalanche",
+        "type": "Utility"
+    },
+    "ADA": {
+        "sector": "Layer-1",
+        "ecosystem": "Cardano",
+        "type": "Utility"
+    },
+    "DOT": {
+        "sector": "Layer-1",
+        "ecosystem": "Polkadot",
+        "type": "Utility",
+        "narratives": [
+            "Interoperability"
+        ]
+    },
+    "ATOM": {
+        "sector": "Layer-1",
+        "ecosystem": "Cosmos",
+        "type": "Utility",
+        "narratives": [
+            "Interoperability"
+        ]
+    },
+    "NEAR": {
+        "sector": "Layer-1",
+        "ecosystem": "NEAR",
+        "type": "Utility"
+    },
+    "APT": {
+        "sector": "Layer-1",
+        "ecosystem": "Aptos",
+        "type": "Utility"
+    },
+    "SUI": {
+        "sector": "Layer-1",
+        "ecosystem": "Sui",
+        "type": "Utility"
+    },
+    "TON": {
+        "sector": "Layer-1",
+        "ecosystem": "TON",
+        "type": "Utility"
+    },
+    "TRX": {
+        "sector": "Layer-1",
+        "ecosystem": "Tron",
+        "type": "Utility"
+    },
+    "ARB": {
+        "sector": "Layer-2",
+        "ecosystem": "Arbitrum",
+        "type": "Utility"
+    },
+    "OP": {
+        "sector": "Layer-2",
+        "ecosystem": "Optimism",
+        "type": "Utility"
+    },
+    "MATIC": {
+        "sector": "Layer-2",
+        "ecosystem": "Polygon",
+        "type": "Utility"
+    },
+    "BASE": {
+        "sector": "Layer-2",
+        "ecosystem": "Base",
+        "type": "Utility"
+    },
+    "USDT": {
+        "sector": "Stablecoin",
+        "ecosystem": "Multi",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "Tether",
+            "peg": "USD"
+        }
+    },
+    "USDC": {
+        "sector": "Stablecoin",
+        "ecosystem": "Multi",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "Circle",
+            "peg": "USD"
+        }
+    },
+    "DAI": {
+        "sector": "Stablecoin",
+        "ecosystem": "Ethereum",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "MakerDAO",
+            "peg": "USD"
+        }
+    },
+    "TUSD": {
+        "sector": "Stablecoin",
+        "ecosystem": "Multi",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "TrueUSD",
+            "peg": "USD"
+        }
+    },
+    "FDUSD": {
+        "sector": "Stablecoin",
+        "ecosystem": "Multi",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "First Digital",
+            "peg": "USD"
+        }
+    },
+    "USDE": {
+        "sector": "Stablecoin",
+        "ecosystem": "Ethereum",
+        "type": "Stablecoin",
+        "stablecoin": {
+            "issuer": "Ethena",
+            "peg": "USD"
+        }
+    },
+    "UNI": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "AAVE": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Lending"
+        ]
+    },
+    "MKR": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "RWA",
+            "Lending"
+        ]
+    },
+    "LDO": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "LSD"
+        ]
+    },
+    "RPL": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "LSD"
+        ]
+    },
+    "SWISE": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "LSD"
+        ]
+    },
+    "PENDLE": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Yield"
+        ]
+    },
+    "GMX": {
+        "sector": "DeFi",
+        "ecosystem": "Arbitrum",
+        "type": "Utility",
+        "narratives": [
+            "Perp DEX"
+        ]
+    },
+    "DYDX": {
+        "sector": "DeFi",
+        "ecosystem": "dYdX",
+        "type": "Utility",
+        "narratives": [
+            "Perp DEX"
+        ]
+    },
+    "PERP": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Perp DEX"
+        ]
+    },
+    "SUSHI": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "CRV": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "BAL": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "CAKE": {
+        "sector": "DeFi",
+        "ecosystem": "BNB Chain",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM"
+        ]
+    },
+    "1INCH": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DEX Aggregator"
+        ]
+    },
+    "SNX": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Derivatives"
+        ]
+    },
+    "INJ": {
+        "sector": "DeFi",
+        "ecosystem": "Injective",
+        "type": "Utility",
+        "narratives": [
+            "Perp DEX"
+        ]
+    },
+    "RUNE": {
+        "sector": "DeFi",
+        "ecosystem": "Thorchain",
+        "type": "Utility",
+        "narratives": [
+            "DEX/AMM",
+            "Interoperability"
+        ]
+    },
+    "LINK": {
+        "sector": "Oracles",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "BAND": {
+        "sector": "Oracles",
+        "ecosystem": "Cosmos",
+        "type": "Utility"
+    },
+    "XMR": {
+        "sector": "Privacy",
+        "ecosystem": "Monero",
+        "type": "Base Coin"
+    },
+    "ZEC": {
+        "sector": "Privacy",
+        "ecosystem": "Zcash",
+        "type": "Base Coin"
+    },
+    "SCRT": {
+        "sector": "Privacy",
+        "ecosystem": "Cosmos",
+        "type": "Utility"
+    },
+    "DOGE": {
+        "sector": "Meme",
+        "ecosystem": "Dogecoin",
+        "type": "Base Coin"
+    },
+    "SHIB": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "PEPE": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "FLOKI": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "BONK": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "WIF": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "RNDR": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "DePIN",
+            "AI"
+        ]
+    },
+    "FET": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "AI"
+        ]
+    },
+    "GRT": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Indexing"
+        ]
+    },
+    "OCEAN": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Data"
+        ]
+    },
+    "TAO": {
+        "sector": "AI",
+        "ecosystem": "Bittensor",
+        "type": "Utility",
+        "narratives": [
+            "AI",
+            "DePIN"
+        ]
+    },
+    "NMR": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "ML"
+        ]
+    },
+    "ONDO": {
+        "sector": "RWA",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "RWA"
+        ]
+    },
+    "POLYX": {
+        "sector": "RWA",
+        "ecosystem": "Polymesh",
+        "type": "Utility",
+        "narratives": [
+            "RWA"
+        ]
+    },
+    "HNT": {
+        "sector": "DePIN",
+        "ecosystem": "Helium",
+        "type": "Utility"
+    },
+    "IOTX": {
+        "sector": "DePIN",
+        "ecosystem": "IoTeX",
+        "type": "Utility"
+    },
+    "STX": {
+        "sector": "Layer-2",
+        "ecosystem": "Bitcoin",
+        "type": "Utility",
+        "narratives": [
+            "Bitcoin L2"
+        ]
+    },
+    "XRP": {
+        "sector": "Infrastructure",
+        "ecosystem": "XRP Ledger",
+        "type": "Base Coin",
+        "narratives": [
+            "Payments"
+        ]
+    },
+    "XLM": {
+        "sector": "Infrastructure",
+        "ecosystem": "Stellar",
+        "type": "Base Coin",
+        "narratives": [
+            "Payments"
+        ]
+    },
+    "META": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Social"
+        ]
+    },
+    "MSFT": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Software",
+            "AI"
+        ]
+    },
+    "GOOG": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Search",
+            "AI"
+        ]
+    },
+    "QQQ": {
+        "sector": "ETF",
+        "ecosystem": "US",
+        "type": "ETF",
+        "narratives": [
+            "Index",
+            "Tech",
+            "NASDAQ-100"
+        ]
+    },
+    "NVDA": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Semiconductor",
+            "AI"
+        ]
+    },
+    "TSLA": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Auto",
+            "EV",
+            "Tech"
+        ]
+    },
+    "AAPL": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "Consumer Electronics"
+        ]
+    },
+    "AMZN": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Tech",
+            "E-commerce",
+            "Cloud"
+        ]
+    },
+    "SBET": {
+        "sector": "Equity",
+        "ecosystem": "US",
+        "type": "Stock",
+        "narratives": [
+            "Stock"
+        ]
+    }
+}

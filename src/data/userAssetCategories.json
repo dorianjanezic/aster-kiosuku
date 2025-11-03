@@ -1,0 +1,536 @@
+{
+    "LTC": {
+        "sector": "Layer-1",
+        "ecosystem": "Litecoin",
+        "type": "Base Coin",
+        "narratives": [
+            "Payments"
+        ]
+    },
+    "ETC": {
+        "sector": "Layer-1",
+        "ecosystem": "Ethereum Classic",
+        "type": "Base Coin",
+        "narratives": [
+            "SmartContracts"
+        ]
+    },
+    "BCH": {
+        "sector": "Layer-1",
+        "ecosystem": "Bitcoin Cash",
+        "type": "Base Coin",
+        "narratives": [
+            "Payments"
+        ]
+    },
+    "GALA": {
+        "sector": "Gaming/Metaverse",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Gaming"
+        ]
+    },
+    "APE": {
+        "sector": "NFT",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "NFT",
+            "Gaming"
+        ]
+    },
+    "WLD": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Identity",
+            "AI"
+        ]
+    },
+    "SEI": {
+        "sector": "Layer-1",
+        "ecosystem": "Sei",
+        "type": "Utility",
+        "narratives": [
+            "HighThroughput"
+        ]
+    },
+    "PYTH": {
+        "sector": "Oracles",
+        "ecosystem": "Solana",
+        "type": "Utility",
+        "narratives": [
+            "Oracles"
+        ]
+    },
+    "LISTA": {
+        "sector": "DeFi",
+        "ecosystem": "BNB Chain",
+        "type": "Utility",
+        "narratives": [
+            "Liquid Staking"
+        ]
+    },
+    "TRUMP": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Meme"
+        ]
+    },
+    "FARTCOIN": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Meme"
+        ]
+    },
+    "ENA": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Stablecoin Infra"
+        ]
+    },
+    "NEIRO": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Meme"
+        ]
+    },
+    "SAHARA": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "AI"
+        ]
+    },
+    "PUMP": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Meme"
+        ]
+    },
+    "PENGU": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility",
+        "narratives": [
+            "Meme"
+        ]
+    },
+    "SPK": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "PORT3": {
+        "sector": "Infrastructure",
+        "ecosystem": "BNB Chain",
+        "type": "Utility",
+        "narratives": [
+            "Social Data"
+        ]
+    },
+    "TREE": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "ZRC": {
+        "sector": "Infrastructure",
+        "ecosystem": "ZetaChain",
+        "type": "Utility",
+        "narratives": [
+            "Interoperability"
+        ]
+    },
+    "ESPORTS": {
+        "sector": "Gaming/Metaverse",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "ZORA": {
+        "sector": "NFT",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "NFT"
+        ]
+    },
+    "TAG": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "TOWNS": {
+        "sector": "Infrastructure",
+        "ecosystem": "Base",
+        "type": "Utility",
+        "narratives": [
+            "Social"
+        ]
+    },
+    "PROVE": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "XNY": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "AIO": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "DAM": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "SAPIEN": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Social"
+        ]
+    },
+    "CUDIS": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "WLFI": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "XPL": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "BAS": {
+        "sector": "Infrastructure",
+        "ecosystem": "BNB Chain",
+        "type": "Utility"
+    },
+    "BTR": {
+        "sector": "DeFi",
+        "ecosystem": "BNB Chain",
+        "type": "Utility"
+    },
+    "MITO": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "HEMI": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "LINEA": {
+        "sector": "Layer-2",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "L2"
+        ]
+    },
+    "Q": {
+        "sector": "Infrastructure",
+        "ecosystem": "Unknown",
+        "type": "Utility"
+    },
+    "PTB": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "ARIA": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "TAKE": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "AVNT": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "OPEN": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "FLOCK": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "SKY": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "HOLO": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "UB": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "XPIN": {
+        "sector": "DePIN",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "ZKC": {
+        "sector": "Privacy",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "ZK"
+        ]
+    },
+    "AIA": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "TOSHI": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "STBL": {
+        "sector": "Stablecoin",
+        "ecosystem": "Unknown",
+        "type": "Stablecoin"
+    },
+    "0G": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "BARD": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "TRADOOR": {
+        "sector": "Infrastructure",
+        "ecosystem": "Unknown",
+        "type": "Utility"
+    },
+    "BLESS": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "SQD": {
+        "sector": "Infrastructure",
+        "ecosystem": "Polkadot",
+        "type": "Utility",
+        "narratives": [
+            "Indexing"
+        ]
+    },
+    "FF": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "EDEN": {
+        "sector": "RWA",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Orderflow"
+        ]
+    },
+    "2Z": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "EVAA": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Lending"
+        ]
+    },
+    "LYN": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "COAI": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "KGEN": {
+        "sector": "AI",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "4": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "GIGGLE": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "BANK": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Lending"
+        ]
+    },
+    "FORM": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "MON": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "YB": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "MET": {
+        "sector": "NFT",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "EUL": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility",
+        "narratives": [
+            "Lending"
+        ]
+    },
+    "ENSO": {
+        "sector": "DeFi",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "CLO": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "RECALL": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "ZBT": {
+        "sector": "Infrastructure",
+        "ecosystem": "Bitcoin",
+        "type": "Utility"
+    },
+    "LAB": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "RIVER": {
+        "sector": "Chain Abstraction",
+        "ecosystem": "BNB Chain",
+        "type": "Utility"
+    },
+    "RVV": {
+        "sector": "Infrastructure",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "ASTER": {
+        "sector": "DeFi",
+        "ecosystem": "Binance Chain",
+        "type": "Utility",
+        "narratives": [
+            "Exchange"
+        ]
+    },
+    "HYPE": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "USD1": {
+        "sector": "Stablecoin",
+        "ecosystem": "Unknown",
+        "type": "Stablecoin"
+    },
+    "B": {
+        "sector": "Infrastructure",
+        "ecosystem": "Unknown",
+        "type": "Utility"
+    },
+    "C": {
+        "sector": "Infrastructure",
+        "ecosystem": "Unknown",
+        "type": "Utility"
+    },
+    "IN": {
+        "sector": "Infrastructure",
+        "ecosystem": "Unknown",
+        "type": "Utility"
+    },
+    "MOODENG": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    },
+    "CHEEMS": {
+        "sector": "Meme",
+        "ecosystem": "Unknown",
+        "type": "Utility"
+    },
+    "PEPE": {
+        "sector": "Meme",
+        "ecosystem": "Ethereum",
+        "type": "Utility"
+    },
+    "BONK": {
+        "sector": "Meme",
+        "ecosystem": "Solana",
+        "type": "Utility"
+    }
+}
