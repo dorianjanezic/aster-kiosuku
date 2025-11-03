@@ -1,5 +1,5 @@
 import express from 'express';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { z } from 'zod';
@@ -9,7 +9,7 @@ export function startHttpServer(portFromEnv?: number) {
 
     // CORS for frontend on Vercel
     const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
-    app.use((req: Request, res: Response, next) => {
+    app.use((req: Request, res: Response, next: NextFunction) => {
         res.header('Access-Control-Allow-Origin', allowedOrigin);
         res.header('Access-Control-Allow-Methods', 'GET,OPTIONS');
         res.header('Access-Control-Allow-Headers', 'Content-Type');
@@ -180,14 +180,41 @@ export function startHttpServer(portFromEnv?: number) {
             const equity = currentBalance + totalUpnl;
             const symbolToPos = new Map(positions.map(p => [p.symbol, p]));
             const pairSummaries: Array<{ key: string; long: string; short: string; upnl: number; notionalEntry: number; percent: number }> = [];
+
+            // Prefer actively tracked open pairs from pairs_state.json
+            const addedKeys = new Set<string>();
+            try {
+                const pairsStatePath = await resolveFromSimData('pairs_state.json');
+                const stateTxt = await fs.readFile(pairsStatePath, 'utf8');
+                const state: Record<string, any> = JSON.parse(stateTxt);
+                for (const [id, s] of Object.entries(state || {})) {
+                    if (!s || s.closedAt) continue; // only open pairs
+                    const parts = id.split('|');
+                    if (parts.length !== 2) continue;
+                    const [longSym, shortSym] = parts as [string, string];
+                    const longPos = symbolToPos.get(longSym);
+                    const shortPos = symbolToPos.get(shortSym);
+                    if (!longPos || !shortPos) continue; // require both legs open
+                    const upnl = (longPos.upnl ?? 0) + (shortPos.upnl ?? 0);
+                    const notionalEntry = (Math.abs(longPos.netQty) * (longPos.avgEntry ?? 0)) + (Math.abs(shortPos.netQty) * (shortPos.avgEntry ?? 0));
+                    const percent = notionalEntry > 0 ? upnl / notionalEntry : 0;
+                    const key = `${longSym}|${shortSym}`;
+                    pairSummaries.push({ key, long: longSym, short: shortSym, upnl, notionalEntry, percent });
+                    addedKeys.add(key);
+                }
+            } catch { /* pairs_state.json may not exist yet; ignore */ }
+
+            // Fallback: include any remaining pairs that appear in the latest pairs snapshot
             for (const pr of (pairs.pairs ?? [])) {
+                const key = `${pr.long}|${pr.short}`;
+                if (addedKeys.has(key)) continue;
                 const longPos = symbolToPos.get(pr.long);
                 const shortPos = symbolToPos.get(pr.short);
                 if (!longPos || !shortPos) continue;
                 const upnl = (longPos.upnl ?? 0) + (shortPos.upnl ?? 0);
                 const notionalEntry = (Math.abs(longPos.netQty) * (longPos.avgEntry ?? 0)) + (Math.abs(shortPos.netQty) * (shortPos.avgEntry ?? 0));
                 const percent = notionalEntry > 0 ? upnl / notionalEntry : 0;
-                pairSummaries.push({ key: `${pr.long}|${pr.short}`, long: pr.long, short: pr.short, upnl, notionalEntry, percent });
+                pairSummaries.push({ key, long: pr.long, short: pr.short, upnl, notionalEntry, percent });
             }
             res.json({ summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity }, positions, pairs: pairSummaries });
         } catch {

@@ -203,6 +203,35 @@ The agent continuously monitors:
 - Risk reduction triggers
 - Social sentiment changes
 
+## Pair Fields Glossary
+
+When the system publishes a pair (e.g., from `pairs.jsonl`), each field means:
+
+- **long / short**: Symbols for the two assets in the pair. Strategy goes long the first and short the second (hedged).
+- **corr**: Pearson correlation of the two assets’ return series. Higher means they typically move together.
+- **beta**: Regression beta of long vs short returns; used for hedge sizing.
+- **hedgeRatio**: Position-size ratio from OLS to build the spread (how much of each asset to hold for neutrality).
+- **cointegration**:
+  - **adfT**: ADF test statistic on the spread (more negative suggests stronger mean reversion).
+  - **p**: Approximate p-value from the test.
+  - **lags**: Number of lags used in the simplified ADF model.
+  - **halfLife**: Mean-reversion half-life in periods (see below). Time ≈ halfLife × sampling_interval.
+  - **stationary**: Whether the spread passes the mean-reversion check.
+- **spreadZ**: Z-score of the spread (current spread minus its mean, divided by its standard deviation). |spreadZ| > ~2 indicates an unusual divergence.
+- **fundingNet**: Approximate net funding impact (if applicable) between the two legs.
+- **scores**: Heuristics combining quantitative/technical factors:
+  - **long / short**: Side-specific scores.
+  - **composite**: Overall score used for ranking.
+- **notes**: Human-readable annotations (diagnostics and factor summaries).
+- **sector**: Categorization (e.g., Layer-1, DeFi, Meme).
+- **prices**: Snapshot price stats used for display/valuation:
+  - **last / bestBid / bestAsk / mid** for each leg.
+
+Half-life details:
+- Computed from an AR(1) model of the spread: φ = 1 + β (from Δspread_t = α + β·spread_{t-1} + ε).
+- halfLife = -ln(2) / ln(|φ|), clamped to a reasonable range.
+- If you compute on hourly candles, halfLife ≈ hours; on 5-minute candles, time ≈ halfLife × 5 minutes.
+
 ## API Endpoints
 
 ### Portfolio Data

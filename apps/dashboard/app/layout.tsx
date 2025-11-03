@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                                     alt="Aster Logo"
                                     width={32}
                                     height={8}
-                                    className="h-6 w-auto object-contain mt-[5px]"
+                                    className="h-6 w-auto object-contain mt-[3px]"
                                 />
                                 <h1 className="text-2xl font-normal tracking-tight text-white">Kiosuku Pair Agent</h1>
                             </div>
@@ -71,7 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
                             </div>
                             <a
-                                href={process.env.NEXT_PUBLIC_GITHUB_URL || 'https://github.com/aster-kiosuku'}
+                                href={process.env.NEXT_PUBLIC_GITHUB_URL || 'https://github.com/dorianjanezic/aster-kiosuku'}
                                 target="_blank"
                                 rel="noreferrer"
                                 aria-label="GitHub Repository"
