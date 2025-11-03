@@ -45,11 +45,12 @@ const PortfolioResponseSchema = z.object({
     pairs: z.array(PairPerfSchema)
 }).passthrough()
 
-// Use relative URLs within Next.js app router
+// Fetch directly from Railway backend to avoid Vercel API route issues
 
 async function fetchPairs() {
     try {
-        const res = await fetch('/api/pairs', { cache: 'no-store' })
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        const res = await fetch(new URL('/api/pairs', backend).toString(), { cache: 'no-store' })
         if (!res.ok) {
             return { asOf: Date.now(), pairs: [] }
         }
@@ -68,7 +69,8 @@ async function fetchPairs() {
 
 async function fetchCycles() {
     try {
-        const res = await fetch('/api/cycles', { cache: 'no-store' })
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
         if (!res.ok) return { events: [] }
         const data = await res.json()
         const parsed = SlimCyclesResponseSchema.safeParse(data)
@@ -85,7 +87,8 @@ async function fetchCycles() {
 
 async function fetchPortfolio() {
     try {
-        const res = await fetch('/api/portfolio', { cache: 'no-store' })
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        const res = await fetch(new URL('/api/portfolio', backend).toString(), { cache: 'no-store' })
         if (!res.ok) return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
         const data = await res.json()
         const parsed = PortfolioResponseSchema.safeParse(data)
