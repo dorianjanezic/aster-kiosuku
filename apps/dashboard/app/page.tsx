@@ -5,32 +5,32 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { RefreshCw, TrendingUp, TrendingDown, Activity, AlertCircle, CheckCircle } from 'lucide-react'
 
-// Pairs schemas (tolerant to missing fields)
-const PriceSchema = z.object({ last: z.number().optional(), bestBid: z.number().optional(), bestAsk: z.number().optional(), mid: z.number().optional() })
+// Pairs schemas (very tolerant to missing/extra fields)
+const PriceSchema = z.object({ last: z.number().optional(), bestBid: z.number().optional(), bestAsk: z.number().optional(), mid: z.number().optional() }).passthrough()
 const PairSchema = z.object({
     long: z.string(),
     short: z.string(),
     corr: z.number().optional(),
     beta: z.number().optional(),
     hedgeRatio: z.number().optional(),
-    cointegration: z.object({ adfT: z.number().optional(), p: z.number().nullable().optional(), lags: z.number().optional(), halfLife: z.number().optional(), stationary: z.boolean().optional() }).optional(),
+    cointegration: z.object({ adfT: z.number().optional(), p: z.number().nullable().optional(), lags: z.number().optional(), halfLife: z.number().optional(), stationary: z.boolean().optional() }).optional().passthrough(),
     spreadZ: z.number().optional(),
     fundingNet: z.number().optional(),
-    scores: z.object({ long: z.number().optional(), short: z.number().optional(), composite: z.number().optional() }).optional(),
+    scores: z.object({ long: z.number().optional(), short: z.number().optional(), composite: z.number().optional() }).optional().passthrough(),
     notes: z.array(z.string()).optional(),
     sector: z.string().optional(),
-    prices: z.object({ long: PriceSchema, short: PriceSchema }).optional()
-})
-const PairsResponseSchema = z.object({ asOf: z.number().optional(), pairs: z.array(PairSchema) })
+    prices: z.object({ long: PriceSchema, short: PriceSchema }).optional().passthrough()
+}).passthrough()
+const PairsResponseSchema = z.object({ asOf: z.number().optional(), pairs: z.array(PairSchema) }).passthrough()
 
 // Cycles schemas
-const SlimCycleEventSchema = z.object({ ts: z.number(), type: z.enum(['user', 'decision']), data: z.unknown() })
-const SlimCyclesResponseSchema = z.object({ events: z.array(SlimCycleEventSchema) })
+const SlimCycleEventSchema = z.object({ ts: z.number(), type: z.enum(['user', 'decision']), data: z.unknown() }).passthrough()
+const SlimCyclesResponseSchema = z.object({ events: z.array(SlimCycleEventSchema) }).passthrough()
 
 // Portfolio schemas
-const PositionSchema = z.object({ symbol: z.string(), netQty: z.number(), avgEntry: z.number().nullable(), mid: z.number().nullable(), notional: z.number().nullable(), upnl: z.number().nullable() })
-const PairPerfSchema = z.object({ key: z.string(), long: z.string(), short: z.string(), upnl: z.number(), notionalEntry: z.number(), percent: z.number() })
-const PortfolioResponseSchema = z.object({ summary: z.object({ baseBalance: z.number(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }), positions: z.array(PositionSchema), pairs: z.array(PairPerfSchema) })
+const PositionSchema = z.object({ symbol: z.string(), netQty: z.number(), avgEntry: z.number().nullable(), mid: z.number().nullable(), notional: z.number().nullable(), upnl: z.number().nullable() }).passthrough()
+const PairPerfSchema = z.object({ key: z.string(), long: z.string(), short: z.string(), upnl: z.number(), notionalEntry: z.number(), percent: z.number() }).passthrough()
+const PortfolioResponseSchema = z.object({ summary: z.object({ baseBalance: z.number(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }), positions: z.array(PositionSchema), pairs: z.array(PairPerfSchema) }).passthrough()
 
 // Use relative URLs within Next.js app router
 
@@ -39,8 +39,15 @@ async function fetchPairs() {
         const res = await fetch('/api/pairs', { cache: 'no-store' })
         if (!res.ok) return { asOf: Date.now(), pairs: [] }
         const data = await res.json()
-        return PairsResponseSchema.parse(data)
-    } catch {
+        const parsed = PairsResponseSchema.safeParse(data)
+        if (parsed.success) {
+            return parsed.data
+        } else {
+            console.error('Failed to parse pairs data:', parsed.error)
+            return { asOf: Date.now(), pairs: Array.isArray(data?.pairs) ? data.pairs : [] }
+        }
+    } catch (err) {
+        console.error('Error fetching pairs:', err)
         return { asOf: Date.now(), pairs: [] }
     }
 }
@@ -50,8 +57,15 @@ async function fetchCycles() {
         const res = await fetch('/api/cycles', { cache: 'no-store' })
         if (!res.ok) return { events: [] }
         const data = await res.json()
-        return SlimCyclesResponseSchema.parse(data)
-    } catch {
+        const parsed = SlimCyclesResponseSchema.safeParse(data)
+        if (parsed.success) {
+            return parsed.data
+        } else {
+            console.error('Failed to parse cycles data:', parsed.error)
+            return { events: Array.isArray(data?.events) ? data.events : [] }
+        }
+    } catch (err) {
+        console.error('Error fetching cycles:', err)
         return { events: [] }
     }
 }
@@ -61,8 +75,15 @@ async function fetchPortfolio() {
         const res = await fetch('/api/portfolio', { cache: 'no-store' })
         if (!res.ok) return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
         const data = await res.json()
-        return PortfolioResponseSchema.parse(data)
-    } catch {
+        const parsed = PortfolioResponseSchema.safeParse(data)
+        if (parsed.success) {
+            return parsed.data
+        } else {
+            console.error('Failed to parse portfolio data:', parsed.error)
+            return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
+        }
+    } catch (err) {
+        console.error('Error fetching portfolio:', err)
         return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
     }
 }
