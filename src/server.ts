@@ -1,4 +1,5 @@
 import express from 'express';
+import type { Request, Response } from 'express';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { z } from 'zod';
@@ -6,7 +7,7 @@ import { z } from 'zod';
 export function startHttpServer(portFromEnv?: number) {
     const app = express();
 
-    app.get('/healthz', (_req, res) => {
+    app.get('/healthz', (_req: Request, res: Response) => {
         res.json({
             status: 'ok',
             pid: process.pid,
@@ -30,7 +31,7 @@ export function startHttpServer(portFromEnv?: number) {
     // ---------- /api/cycles ----------
     const InputCycleEventSchema = z.object({ ts: z.number(), type: z.string(), data: z.unknown() });
     const SlimCycleEventSchema = z.object({ ts: z.number(), type: z.enum(['user', 'decision']), data: z.unknown() });
-    app.get('/api/cycles', async (_req, res) => {
+    app.get('/api/cycles', async (_req: Request, res: Response) => {
         try {
             const filePath = await resolveFromSimData('cycles.jsonl');
             const raw = await fs.readFile(filePath, 'utf8');
@@ -73,7 +74,7 @@ export function startHttpServer(portFromEnv?: number) {
         prices: z.object({ long: PriceSchema, short: PriceSchema }).optional()
     });
     const PairsFileSchema = z.object({ asOf: z.number().optional(), pairs: z.array(PairSchema) });
-    app.get('/api/pairs', async (_req, res) => {
+    app.get('/api/pairs', async (_req: Request, res: Response) => {
         try {
             const jsonlPath = await resolveFromSimData('pairs.jsonl');
             const jsonPath = await resolveFromSimData('pairs.json');
@@ -95,7 +96,7 @@ export function startHttpServer(portFromEnv?: number) {
     });
 
     // ---------- /api/portfolio ----------
-    app.get('/api/portfolio', async (_req, res) => {
+    app.get('/api/portfolio', async (_req: Request, res: Response) => {
         try {
             const ordersPath = await resolveFromSimData('orders.jsonl');
             const pairsPath = await resolveFromSimData('pairs.json');
