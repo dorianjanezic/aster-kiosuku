@@ -13,13 +13,22 @@ const PairSchema = z.object({
     corr: z.number().optional(),
     beta: z.number().optional(),
     hedgeRatio: z.number().optional(),
-    cointegration: z.object({ adfT: z.number().optional(), p: z.number().nullable().optional(), lags: z.number().optional(), halfLife: z.number().optional(), stationary: z.boolean().optional() }).optional().passthrough(),
+    cointegration: z.union([
+        z.object({ adfT: z.number().optional(), p: z.number().nullable().optional(), lags: z.number().optional(), halfLife: z.number().optional(), stationary: z.boolean().optional() }).passthrough(),
+        z.undefined()
+    ]),
     spreadZ: z.number().optional(),
     fundingNet: z.number().optional(),
-    scores: z.object({ long: z.number().optional(), short: z.number().optional(), composite: z.number().optional() }).optional().passthrough(),
+    scores: z.union([
+        z.object({ long: z.number().optional(), short: z.number().optional(), composite: z.number().optional() }).passthrough(),
+        z.undefined()
+    ]),
     notes: z.array(z.string()).optional(),
     sector: z.string().optional(),
-    prices: z.object({ long: PriceSchema, short: PriceSchema }).optional().passthrough()
+    prices: z.union([
+        z.object({ long: PriceSchema, short: PriceSchema }).passthrough(),
+        z.undefined()
+    ])
 }).passthrough()
 const PairsResponseSchema = z.object({ asOf: z.number().optional(), pairs: z.array(PairSchema) }).passthrough()
 
@@ -30,7 +39,11 @@ const SlimCyclesResponseSchema = z.object({ events: z.array(SlimCycleEventSchema
 // Portfolio schemas
 const PositionSchema = z.object({ symbol: z.string(), netQty: z.number(), avgEntry: z.number().nullable(), mid: z.number().nullable(), notional: z.number().nullable(), upnl: z.number().nullable() }).passthrough()
 const PairPerfSchema = z.object({ key: z.string(), long: z.string(), short: z.string(), upnl: z.number(), notionalEntry: z.number(), percent: z.number() }).passthrough()
-const PortfolioResponseSchema = z.object({ summary: z.object({ baseBalance: z.number(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }), positions: z.array(PositionSchema), pairs: z.array(PairPerfSchema) }).passthrough()
+const PortfolioResponseSchema = z.object({
+    summary: z.object({ baseBalance: z.number(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }),
+    positions: z.array(PositionSchema),
+    pairs: z.array(PairPerfSchema)
+}).passthrough()
 
 // Use relative URLs within Next.js app router
 
