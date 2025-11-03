@@ -13,6 +13,7 @@ import { loadConfig } from './config/index.js';
 import { PublicClient } from './http/publicClient.js';
 import { MarketsService } from './services/marketsService.js';
 import { SchedulerLoop } from './scheduler/loop.js';
+import { startHttpServer } from './server.js';
 
 async function start() {
     // Initialize environment variables from .env file
@@ -39,6 +40,9 @@ async function start() {
     new SchedulerLoop(cfg.loopIntervalMs).start();
 
     console.log('App started. Loop:', cfg.loopIntervalMs, 'ms. Markets refresh every', cfg.marketsRefreshMs, 'ms');
+
+    // Start lightweight HTTP health server
+    try { startHttpServer(); } catch (e) { console.error('Failed to start HTTP server', e); }
 }
 
 start().catch((err) => {

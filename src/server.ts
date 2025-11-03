@@ -1,0 +1,184 @@
+import express from 'express';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { z } from 'zod';
+
+export function startHttpServer(portFromEnv?: number) {
+    const app = express();
+
+    app.get('/healthz', (_req, res) => {
+        res.json({
+            status: 'ok',
+            pid: process.pid,
+            uptimeSeconds: Math.floor(process.uptime()),
+            timestamp: new Date().toISOString(),
+        });
+    });
+
+    // ---------- Helpers ----------
+    const cwd = process.cwd();
+    const resolveFromSimData = async (...segments: string[]) => {
+        const candidates = [
+            path.join(cwd, 'sim_data', ...segments),
+        ];
+        for (const p of candidates) {
+            try { await fs.access(p); return p; } catch {/* try next */ }
+        }
+        return path.join(cwd, ...segments);
+    };
+
+    // ---------- /api/cycles ----------
+    const InputCycleEventSchema = z.object({ ts: z.number(), type: z.string(), data: z.unknown() });
+    const SlimCycleEventSchema = z.object({ ts: z.number(), type: z.enum(['user', 'decision']), data: z.unknown() });
+    app.get('/api/cycles', async (_req, res) => {
+        try {
+            const filePath = await resolveFromSimData('cycles.jsonl');
+            const raw = await fs.readFile(filePath, 'utf8');
+            const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            const events: Array<z.infer<typeof SlimCycleEventSchema>> = [];
+            for (const line of lines) {
+                try {
+                    const parsed = JSON.parse(line);
+                    const ev = InputCycleEventSchema.parse(parsed);
+                    if (ev.type === 'user_raw') {
+                        const content = (ev.data as any)?.content;
+                        if (typeof content === 'string') events.push({ ts: ev.ts, type: 'user', data: content });
+                    } else if (ev.type === 'decision') {
+                        const d: any = ev.data;
+                        const decision = d?.parsed ?? d?.raw ?? d;
+                        events.push({ ts: ev.ts, type: 'decision', data: decision });
+                    }
+                } catch { }
+            }
+            res.json({ events });
+        } catch (e) {
+            res.status(500).json({ error: 'Failed to read cycles data' });
+        }
+    });
+
+    // ---------- /api/pairs ----------
+    const PriceSchema = z.object({ last: z.number().optional(), bestBid: z.number().optional(), bestAsk: z.number().optional(), mid: z.number().optional() });
+    const PairSchema = z.object({
+        long: z.string(),
+        short: z.string(),
+        corr: z.number().optional(),
+        beta: z.number().optional(),
+        hedgeRatio: z.number().optional(),
+        cointegration: z.any().optional(),
+        spreadZ: z.number().optional(),
+        fundingNet: z.number().optional(),
+        scores: z.any().optional(),
+        notes: z.array(z.string()).optional(),
+        sector: z.string().optional(),
+        prices: z.object({ long: PriceSchema, short: PriceSchema }).optional()
+    });
+    const PairsFileSchema = z.object({ asOf: z.number().optional(), pairs: z.array(PairSchema) });
+    app.get('/api/pairs', async (_req, res) => {
+        try {
+            const jsonlPath = await resolveFromSimData('pairs.jsonl');
+            const jsonPath = await resolveFromSimData('pairs.json');
+            let parsed: any = null;
+            try {
+                const raw = await fs.readFile(jsonlPath, 'utf8');
+                const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                const last = lines.length > 0 ? JSON.parse(lines[lines.length - 1]) : null;
+                parsed = last?.data ?? null;
+            } catch {
+                try { parsed = JSON.parse(await fs.readFile(jsonPath, 'utf8')); } catch { }
+            }
+            if (!parsed) parsed = { pairs: [] };
+            const data = PairsFileSchema.parse(parsed);
+            res.json(data);
+        } catch {
+            res.status(500).json({ error: 'Failed to read pairs data' });
+        }
+    });
+
+    // ---------- /api/portfolio ----------
+    app.get('/api/portfolio', async (_req, res) => {
+        try {
+            const ordersPath = await resolveFromSimData('orders.jsonl');
+            const pairsPath = await resolveFromSimData('pairs.json');
+            const marketsPath = await resolveFromSimData('markets.json');
+            const [ordersRaw, pairsRaw, marketsRaw] = await Promise.all([
+                fs.readFile(ordersPath, 'utf8'),
+                fs.readFile(pairsPath, 'utf8').catch(() => 'null'),
+                fs.readFile(marketsPath, 'utf8').catch(() => 'null'),
+            ]);
+            const pairs = pairsRaw && pairsRaw !== 'null' ? JSON.parse(pairsRaw) : { pairs: [] as any[] };
+            const markets = marketsRaw && marketsRaw !== 'null' ? JSON.parse(marketsRaw) : { markets: [] as any[] };
+            const priceMap = new Map<string, number>();
+            for (const m of (markets.markets ?? [])) {
+                if (typeof m.lastPrice === 'number') priceMap.set(m.symbol, m.lastPrice);
+            }
+            const lines = ordersRaw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            const orders: Array<any> = [];
+            let realizedSum = 0;
+            for (const line of lines) {
+                try {
+                    const obj = JSON.parse(line);
+                    if (obj?.type === 'order' && obj?.data) orders.push(obj);
+                    if (obj?.type === 'pair_exit' && typeof obj?.data?.realizedPnlUsd === 'number') realizedSum += obj.data.realizedPnlUsd;
+                } catch { }
+            }
+            type RunningPos = { netQty: number; avgPrice: number | null };
+            const posMap = new Map<string, RunningPos>();
+            const fills = orders.filter(o => o.data.status === 'FILLED').sort((a, b) => a.ts - b.ts);
+            for (const f of fills) {
+                const symbol = f.data.symbol as string;
+                const qtySigned = f.data.executedQty * (f.data.side === 'BUY' ? 1 : -1);
+                const price = f.data.price as number;
+                const cur = posMap.get(symbol) ?? { netQty: 0, avgPrice: null };
+                if (cur.netQty === 0) { posMap.set(symbol, { netQty: qtySigned, avgPrice: price }); continue; }
+                if (Math.sign(cur.netQty) === Math.sign(qtySigned)) {
+                    const newQtyAbs = Math.abs(cur.netQty) + Math.abs(qtySigned);
+                    const newAvg = (((cur.avgPrice ?? price) as number) * Math.abs(cur.netQty) + price * Math.abs(qtySigned)) / newQtyAbs;
+                    posMap.set(symbol, { netQty: cur.netQty + qtySigned, avgPrice: newAvg });
+                } else {
+                    const remaining = cur.netQty + qtySigned;
+                    if (remaining === 0) posMap.set(symbol, { netQty: 0, avgPrice: null });
+                    else if (Math.sign(remaining) === Math.sign(cur.netQty)) posMap.set(symbol, { netQty: remaining, avgPrice: cur.avgPrice });
+                    else posMap.set(symbol, { netQty: remaining, avgPrice: price });
+                }
+            }
+            const positions = Array.from(posMap.entries())
+                .filter(([, p]) => Math.abs(p.netQty) > 1e-12)
+                .map(([symbol, p]) => {
+                    const directMid = priceMap.get(symbol);
+                    const pair = (pairs.pairs ?? []).find((pp: any) => pp.long === symbol || pp.short === symbol);
+                    const pairMid = pair ? (pair.long === symbol ? pair.prices?.long?.mid : pair.prices?.short?.mid) : undefined;
+                    const mid = (typeof directMid === 'number') ? directMid : (typeof pairMid === 'number' ? pairMid : null);
+                    const notional = mid != null ? Math.abs(p.netQty) * (mid as number) : null;
+                    const upnl = p.avgPrice != null && mid != null ? ((mid as number) - (p.avgPrice as number)) * p.netQty : 0;
+                    return { symbol, netQty: p.netQty, avgEntry: p.avgPrice, mid, notional, upnl };
+                });
+            const totalNotional = positions.reduce((acc, p) => acc + (p.notional ?? 0), 0);
+            const totalUpnl = positions.reduce((acc, p) => acc + (p.upnl ?? 0), 0);
+            const startingBalance = Number(process.env.PORTFOLIO_BASE_BALANCE || 10000);
+            const currentBalance = startingBalance + realizedSum;
+            const equity = currentBalance + totalUpnl;
+            const symbolToPos = new Map(positions.map(p => [p.symbol, p]));
+            const pairSummaries: Array<{ key: string; long: string; short: string; upnl: number; notionalEntry: number; percent: number }> = [];
+            for (const pr of (pairs.pairs ?? [])) {
+                const longPos = symbolToPos.get(pr.long);
+                const shortPos = symbolToPos.get(pr.short);
+                if (!longPos || !shortPos) continue;
+                const upnl = (longPos.upnl ?? 0) + (shortPos.upnl ?? 0);
+                const notionalEntry = (Math.abs(longPos.netQty) * (longPos.avgEntry ?? 0)) + (Math.abs(shortPos.netQty) * (shortPos.avgEntry ?? 0));
+                const percent = notionalEntry > 0 ? upnl / notionalEntry : 0;
+                pairSummaries.push({ key: `${pr.long}|${pr.short}`, long: pr.long, short: pr.short, upnl, notionalEntry, percent });
+            }
+            res.json({ summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity }, positions, pairs: pairSummaries });
+        } catch {
+            res.status(500).json({ error: 'Failed to compute portfolio' });
+        }
+    });
+
+    const port = portFromEnv ?? (process.env.PORT ? Number(process.env.PORT) : 3000);
+    return app.listen(port, () => {
+        // eslint-disable-next-line no-console
+        console.log(`HTTP server listening on ${port}`);
+    });
+}
+
+
