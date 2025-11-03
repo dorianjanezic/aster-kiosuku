@@ -3,6 +3,8 @@ import { z } from 'zod'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+export const runtime = 'nodejs'
+
 const PriceSchema = z.object({
     last: z.number().optional(),
     bestBid: z.number().optional(),
@@ -46,7 +48,7 @@ async function resolvePairsPath(): Promise<string> {
 
 export async function GET() {
     try {
-        const backend = process.env.BACKEND_BASE_URL
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL
         if (backend) {
             const res = await fetch(new URL('/api/pairs', backend).toString(), { cache: 'no-store' })
             if (!res.ok) return NextResponse.json({ asOf: Date.now(), pairs: [] }, { status: 200 })

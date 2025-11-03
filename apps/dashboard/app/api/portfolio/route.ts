@@ -3,6 +3,8 @@ import { z } from 'zod'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+export const runtime = 'nodejs'
+
 const OrderSchema = z.object({
     ts: z.number(),
     type: z.literal('order'),
@@ -54,7 +56,7 @@ async function resolvePath(...segments: string[]): Promise<string> {
 
 export async function GET() {
     try {
-        const backend = process.env.BACKEND_BASE_URL
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL
         if (backend) {
             try {
                 const res = await fetch(new URL('/api/portfolio', backend).toString(), { cache: 'no-store' })
