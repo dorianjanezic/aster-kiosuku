@@ -263,7 +263,7 @@ export default async function DashboardPage() {
                                         <td className="px-4 py-3 font-medium">
                                             <div className="flex items-center gap-2">
                                                 <span>{p.long} / {p.short}</span>
-                                                {Math.abs(p.spreadZ) > 2 && (
+                                                {typeof p.spreadZ === 'number' && Math.abs(p.spreadZ) > 2 && (
                                                     <Badge variant="warning" className="text-xs">
                                                         <AlertCircle className="h-3 w-3 mr-1" />
                                                         High Z
