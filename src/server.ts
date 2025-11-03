@@ -181,8 +181,11 @@ export function startHttpServer(portFromEnv?: number) {
             const symbolToPos = new Map(positions.map(p => [p.symbol, p]));
             const pairSummaries: Array<{ key: string; long: string; short: string; upnl: number; notionalEntry: number; percent: number }> = [];
 
+            // Helper: normalize pair key so A|B == B|A
+            const normalizeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
             // Prefer actively tracked open pairs from pairs_state.json
-            const addedKeys = new Set<string>();
+            const addedKeys = new Set<string>(); // normalized keys
             try {
                 const pairsStatePath = await resolveFromSimData('pairs_state.json');
                 const stateTxt = await fs.readFile(pairsStatePath, 'utf8');
@@ -192,29 +195,31 @@ export function startHttpServer(portFromEnv?: number) {
                     const parts = id.split('|');
                     if (parts.length !== 2) continue;
                     const [longSym, shortSym] = parts as [string, string];
+                    const norm = normalizeKey(longSym, shortSym);
+                    if (addedKeys.has(norm)) continue;
                     const longPos = symbolToPos.get(longSym);
                     const shortPos = symbolToPos.get(shortSym);
                     if (!longPos || !shortPos) continue; // require both legs open
                     const upnl = (longPos.upnl ?? 0) + (shortPos.upnl ?? 0);
                     const notionalEntry = (Math.abs(longPos.netQty) * (longPos.avgEntry ?? 0)) + (Math.abs(shortPos.netQty) * (shortPos.avgEntry ?? 0));
                     const percent = notionalEntry > 0 ? upnl / notionalEntry : 0;
-                    const key = `${longSym}|${shortSym}`;
-                    pairSummaries.push({ key, long: longSym, short: shortSym, upnl, notionalEntry, percent });
-                    addedKeys.add(key);
+                    pairSummaries.push({ key: norm, long: longSym, short: shortSym, upnl, notionalEntry, percent });
+                    addedKeys.add(norm);
                 }
             } catch { /* pairs_state.json may not exist yet; ignore */ }
 
             // Fallback: include any remaining pairs that appear in the latest pairs snapshot
             for (const pr of (pairs.pairs ?? [])) {
-                const key = `${pr.long}|${pr.short}`;
-                if (addedKeys.has(key)) continue;
+                const norm = normalizeKey(pr.long, pr.short);
+                if (addedKeys.has(norm)) continue;
                 const longPos = symbolToPos.get(pr.long);
                 const shortPos = symbolToPos.get(pr.short);
                 if (!longPos || !shortPos) continue;
                 const upnl = (longPos.upnl ?? 0) + (shortPos.upnl ?? 0);
                 const notionalEntry = (Math.abs(longPos.netQty) * (longPos.avgEntry ?? 0)) + (Math.abs(shortPos.netQty) * (shortPos.avgEntry ?? 0));
                 const percent = notionalEntry > 0 ? upnl / notionalEntry : 0;
-                pairSummaries.push({ key, long: pr.long, short: pr.short, upnl, notionalEntry, percent });
+                pairSummaries.push({ key: norm, long: pr.long, short: pr.short, upnl, notionalEntry, percent });
+                addedKeys.add(norm);
             }
             res.json({ summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity }, positions, pairs: pairSummaries });
         } catch {
