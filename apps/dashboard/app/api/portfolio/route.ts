@@ -53,6 +53,14 @@ async function resolvePath(...segments: string[]): Promise<string> {
 
 export async function GET() {
     try {
+        const backend = process.env.BACKEND_BASE_URL
+        if (backend) {
+            const res = await fetch(new URL('/api/portfolio', backend).toString(), { cache: 'no-store' })
+            if (!res.ok) return NextResponse.json({ error: 'Backend portfolio fetch failed' }, { status: 502 })
+            const json = await res.json()
+            return NextResponse.json(json, { status: 200 })
+        }
+
         // Prefer latest portfolio snapshot if available
         const portfolioPath = await resolvePath('portfolio.jsonl')
         try {

@@ -30,6 +30,15 @@ async function resolveCyclesPath(): Promise<string> {
 
 export async function GET() {
     try {
+        // Prefer proxying to backend if configured (avoids CORS and uses live data)
+        const backend = process.env.BACKEND_BASE_URL
+        if (backend) {
+            const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
+            if (!res.ok) return NextResponse.json({ error: 'Backend cycles fetch failed' }, { status: 502 })
+            const json = await res.json()
+            return NextResponse.json(json, { status: 200 })
+        }
+
         const filePath = await resolveCyclesPath()
         const raw = await fs.readFile(filePath, 'utf8')
         const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)

@@ -46,6 +46,14 @@ async function resolvePairsPath(): Promise<string> {
 
 export async function GET() {
     try {
+        const backend = process.env.BACKEND_BASE_URL
+        if (backend) {
+            const res = await fetch(new URL('/api/pairs', backend).toString(), { cache: 'no-store' })
+            if (!res.ok) return NextResponse.json({ error: 'Backend pairs fetch failed' }, { status: 502 })
+            const json = await res.json()
+            return NextResponse.json(json, { status: 200 })
+        }
+
         const filePath = await resolvePairsPath()
         const raw = await fs.readFile(filePath, 'utf8')
         let parsed: any = null
