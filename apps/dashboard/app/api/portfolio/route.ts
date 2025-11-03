@@ -56,19 +56,17 @@ async function resolvePath(...segments: string[]): Promise<string> {
 
 export async function GET() {
     try {
-        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL
-        if (backend) {
-            try {
-                const res = await fetch(new URL('/api/portfolio', backend).toString(), { cache: 'no-store' })
-                if (!res.ok) {
-                    return NextResponse.json({ summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }, { status: 200 })
-                }
+        // Always try to fetch from backend first
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        try {
+            const res = await fetch(new URL('/api/portfolio', backend).toString(), { cache: 'no-store' })
+            if (res.ok) {
                 const json = await res.json()
                 // Pass through backend response as-is
                 return NextResponse.json(json, { status: 200 })
-            } catch {
-                return NextResponse.json({ summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }, { status: 200 })
             }
+        } catch (fetchErr) {
+            console.error('Backend fetch failed:', fetchErr)
         }
 
         // Prefer latest portfolio snapshot if available

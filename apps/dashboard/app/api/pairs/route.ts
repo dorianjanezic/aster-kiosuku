@@ -48,17 +48,22 @@ async function resolvePairsPath(): Promise<string> {
 
 export async function GET() {
     try {
-        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL
-        if (backend) {
+        // Always try to fetch from backend first
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        try {
             const res = await fetch(new URL('/api/pairs', backend).toString(), { cache: 'no-store' })
-            if (!res.ok) return NextResponse.json({ asOf: Date.now(), pairs: [] }, { status: 200 })
-            const json = await res.json()
-            // Try to validate, but fail-soft
-            const parsed = PairsFileSchema.safeParse(json)
-            if (parsed.success) return NextResponse.json(parsed.data, { status: 200 })
-            return NextResponse.json({ asOf: Date.now(), pairs: Array.isArray(json?.pairs) ? json.pairs : [] }, { status: 200 })
+            if (res.ok) {
+                const json = await res.json()
+                // Try to validate, but fail-soft
+                const parsed = PairsFileSchema.safeParse(json)
+                if (parsed.success) return NextResponse.json(parsed.data, { status: 200 })
+                return NextResponse.json({ asOf: Date.now(), pairs: Array.isArray(json?.pairs) ? json.pairs : [] }, { status: 200 })
+            }
+        } catch (fetchErr) {
+            console.error('Backend fetch failed:', fetchErr)
         }
 
+        // Fallback to local file if backend fails
         const filePath = await resolvePairsPath()
         const raw = await fs.readFile(filePath, 'utf8')
         let parsed: any = null
@@ -73,6 +78,7 @@ export async function GET() {
         if (safe.success) return NextResponse.json(safe.data, { status: 200 })
         return NextResponse.json({ asOf: Date.now(), pairs: Array.isArray((parsed as any)?.pairs) ? (parsed as any).pairs : [] }, { status: 200 })
     } catch (err) {
+        console.error('API error:', err)
         return NextResponse.json({ asOf: Date.now(), pairs: [] }, { status: 200 })
     }
 }

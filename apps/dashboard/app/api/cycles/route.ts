@@ -32,17 +32,16 @@ async function resolveCyclesPath(): Promise<string> {
 
 export async function GET() {
     try {
-        // Prefer proxying to backend if configured (avoids CORS and uses live data)
-        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL
-        if (backend) {
-            try {
-                const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
-                if (!res.ok) return NextResponse.json({ events: [] }, { status: 200 })
+        // Always try to fetch from backend first
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        try {
+            const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
+            if (res.ok) {
                 const json = await res.json()
                 return NextResponse.json(json, { status: 200 })
-            } catch {
-                return NextResponse.json({ events: [] }, { status: 200 })
             }
+        } catch (fetchErr) {
+            console.error('Backend fetch failed:', fetchErr)
         }
 
         const filePath = await resolveCyclesPath()
