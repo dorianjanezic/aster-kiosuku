@@ -5,21 +5,21 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { RefreshCw, TrendingUp, TrendingDown, Activity, AlertCircle, CheckCircle } from 'lucide-react'
 
-// Pairs schemas
-const PriceSchema = z.object({ last: z.number(), bestBid: z.number(), bestAsk: z.number(), mid: z.number() })
+// Pairs schemas (tolerant to missing fields)
+const PriceSchema = z.object({ last: z.number().optional(), bestBid: z.number().optional(), bestAsk: z.number().optional(), mid: z.number().optional() })
 const PairSchema = z.object({
     long: z.string(),
     short: z.string(),
-    corr: z.number(),
-    beta: z.number(),
-    hedgeRatio: z.number(),
-    cointegration: z.object({ adfT: z.number(), p: z.number().nullable(), lags: z.number(), halfLife: z.number(), stationary: z.boolean() }),
-    spreadZ: z.number(),
+    corr: z.number().optional(),
+    beta: z.number().optional(),
+    hedgeRatio: z.number().optional(),
+    cointegration: z.object({ adfT: z.number().optional(), p: z.number().nullable().optional(), lags: z.number().optional(), halfLife: z.number().optional(), stationary: z.boolean().optional() }).optional(),
+    spreadZ: z.number().optional(),
     fundingNet: z.number().optional(),
-    scores: z.object({ long: z.number(), short: z.number(), composite: z.number() }),
+    scores: z.object({ long: z.number().optional(), short: z.number().optional(), composite: z.number().optional() }).optional(),
     notes: z.array(z.string()).optional(),
     sector: z.string().optional(),
-    prices: z.object({ long: PriceSchema, short: PriceSchema })
+    prices: z.object({ long: PriceSchema, short: PriceSchema }).optional()
 })
 const PairsResponseSchema = z.object({ asOf: z.number().optional(), pairs: z.array(PairSchema) })
 
@@ -136,7 +136,7 @@ export default async function DashboardPage() {
 
     // Calculate some derived metrics
     const totalPairs = pairs.length
-    const overviewPairs = [...pairs].sort((a, b) => b.scores.composite - a.scores.composite)
+    const overviewPairs = [...pairs].sort((a, b) => (b.scores?.composite ?? -Infinity) - (a.scores?.composite ?? -Infinity))
     const activePositions = positions.filter(p => Math.abs(p.netQty) > 0.0001).length
     const profitablePairs = pairPerformances.filter(p => p.upnl > 0).length
     const totalExposure = summary.totalNotional
@@ -272,16 +272,20 @@ export default async function DashboardPage() {
                                             </div>
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            <span className={p.corr > 0.7 ? "text-green-600 font-medium" : ""}>
-                                                {p.corr.toFixed(3)}
-                                            </span>
+                                            {typeof p.corr === 'number' ? (
+                                                <span className={p.corr > 0.7 ? "text-green-600 font-medium" : ""}>
+                                                    {p.corr.toFixed(3)}
+                                                </span>
+                                            ) : '-'}
                                         </td>
-                                        <td className="px-4 py-3 text-right">{p.spreadZ.toFixed(3)}</td>
-                                        <td className="px-4 py-3 text-right">{p.cointegration.halfLife.toFixed(1)}p</td>
+                                        <td className="px-4 py-3 text-right">{typeof p.spreadZ === 'number' ? p.spreadZ.toFixed(3) : '-'}</td>
+                                        <td className="px-4 py-3 text-right">{typeof p.cointegration?.halfLife === 'number' ? `${p.cointegration.halfLife.toFixed(1)}p` : '-'}</td>
                                         <td className="px-4 py-3 text-right">
-                                            <span className={p.scores.composite > 0 ? "text-green-600" : "text-red-600"}>
-                                                {p.scores.composite.toFixed(3)}
-                                            </span>
+                                            {typeof p.scores?.composite === 'number' ? (
+                                                <span className={p.scores.composite > 0 ? "text-green-600" : "text-red-600"}>
+                                                    {p.scores.composite.toFixed(3)}
+                                                </span>
+                                            ) : '-'}
                                         </td>
                                         <td className="px-4 py-3">
                                             <Badge variant="outline" className="text-xs">
