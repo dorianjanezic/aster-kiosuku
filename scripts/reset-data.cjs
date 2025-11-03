@@ -6,6 +6,11 @@ const path = require('path');
 async function resetData() {
     const simDataDir = path.join(__dirname, '..', 'sim_data');
 
+    // Ensure directory exists (handles fresh deploys)
+    try {
+        await fs.mkdir(simDataDir, { recursive: true });
+    } catch {}
+
     // Files to reset (clear completely)
     const filesToReset = [
         'cycles.jsonl',
