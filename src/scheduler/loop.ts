@@ -81,6 +81,22 @@ export class SchedulerLoop {
                 await ledger.append('cycle', { started, account, positions, recent });
                 await portfolioLedger.append('portfolio', { account, positions });
                 await orchestrator.runOnce();
+                // Post-execution portfolio snapshot to capture changes from new orders
+                const postAccount = await state.getAccountState();
+                const postPositions = sim.listPositions().map(p => {
+                    const signedQty = p.positionSide === 'LONG' ? p.positionAmt : -p.positionAmt;
+                    const mid = (() => { try { return sim.getTicker(p.symbol).price; } catch { return undefined; } })();
+                    return {
+                        symbol: p.symbol,
+                        direction: p.positionSide,
+                        entryPrice: p.entryPrice,
+                        qty: signedQty,
+                        mid,
+                        unrealizedPnl: p.unrealizedPnl,
+                        leverage: p.leverage
+                    };
+                });
+                await portfolioLedger.append('portfolio', { account: postAccount, positions: postPositions });
             } catch (e) {
                 await ledger.append('error', { started, error: String(e) });
             }

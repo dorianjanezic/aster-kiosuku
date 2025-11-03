@@ -208,22 +208,43 @@ export function startHttpServer(portFromEnv?: number) {
                 }
             } catch { /* pairs_state.json may not exist yet; ignore */ }
 
-            // Fallback: include any remaining pairs that appear in the latest pairs snapshot
-            for (const pr of (pairs.pairs ?? [])) {
-                const norm = normalizeKey(pr.long, pr.short);
-                if (addedKeys.has(norm)) continue;
-                const longPos = symbolToPos.get(pr.long);
-                const shortPos = symbolToPos.get(pr.short);
-                if (!longPos || !shortPos) continue;
-                const upnl = (longPos.upnl ?? 0) + (shortPos.upnl ?? 0);
-                const notionalEntry = (Math.abs(longPos.netQty) * (longPos.avgEntry ?? 0)) + (Math.abs(shortPos.netQty) * (shortPos.avgEntry ?? 0));
-                const percent = notionalEntry > 0 ? upnl / notionalEntry : 0;
-                pairSummaries.push({ key: norm, long: pr.long, short: pr.short, upnl, notionalEntry, percent });
-                addedKeys.add(norm);
+            // Fallback: only if no open pairs found in pairs_state.json
+            if (pairSummaries.length === 0) {
+                for (const pr of (pairs.pairs ?? [])) {
+                    const norm = normalizeKey(pr.long, pr.short);
+                    if (addedKeys.has(norm)) continue;
+                    const longPos = symbolToPos.get(pr.long);
+                    const shortPos = symbolToPos.get(pr.short);
+                    if (!longPos || !shortPos) continue;
+                    const upnl = (longPos.upnl ?? 0) + (shortPos.upnl ?? 0);
+                    const notionalEntry = (Math.abs(longPos.netQty) * (longPos.avgEntry ?? 0)) + (Math.abs(shortPos.netQty) * (shortPos.avgEntry ?? 0));
+                    const percent = notionalEntry > 0 ? upnl / notionalEntry : 0;
+                    pairSummaries.push({ key: norm, long: pr.long, short: pr.short, upnl, notionalEntry, percent });
+                    addedKeys.add(norm);
+                }
             }
             res.json({ summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity }, positions, pairs: pairSummaries });
         } catch {
             res.status(500).json({ error: 'Failed to compute portfolio' });
+        }
+    });
+
+    // ---------- /api/orders ----------
+    app.get('/api/orders', async (req: Request, res: Response) => {
+        try {
+            const filePath = await resolveFromSimData('orders.jsonl');
+            const raw = await fs.readFile(filePath, 'utf8');
+            const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            const limitRaw = (req.query.limit as string) ?? '200';
+            const limit = Math.max(1, Math.min(1000, Number(limitRaw)));
+            const recent = lines.slice(-limit);
+            const events: any[] = [];
+            for (const line of recent) {
+                try { events.push(JSON.parse(line)); } catch { }
+            }
+            res.json({ events });
+        } catch {
+            res.status(500).json({ error: 'Failed to read orders data' });
         }
     });
 
