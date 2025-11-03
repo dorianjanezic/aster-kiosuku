@@ -143,6 +143,7 @@ dist/
 apps/dashboard/.next/
 # TS build info
 tsconfig.tsbuildinfo
+docs/
 
 # ignore pnpm & builds
 .pnpm-store/
