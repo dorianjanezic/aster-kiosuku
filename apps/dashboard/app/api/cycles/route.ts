@@ -3,6 +3,8 @@ import { z } from 'zod'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+export const runtime = 'nodejs'
+
 const InputCycleEventSchema = z.object({ ts: z.number(), type: z.string(), data: z.unknown() })
 
 const SlimCycleEventSchema = z.object({
@@ -31,12 +33,16 @@ async function resolveCyclesPath(): Promise<string> {
 export async function GET() {
     try {
         // Prefer proxying to backend if configured (avoids CORS and uses live data)
-        const backend = process.env.BACKEND_BASE_URL
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL
         if (backend) {
-            const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
-            if (!res.ok) return NextResponse.json({ error: 'Backend cycles fetch failed' }, { status: 502 })
-            const json = await res.json()
-            return NextResponse.json(json, { status: 200 })
+            try {
+                const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
+                if (!res.ok) return NextResponse.json({ events: [] }, { status: 200 })
+                const json = await res.json()
+                return NextResponse.json(json, { status: 200 })
+            } catch {
+                return NextResponse.json({ events: [] }, { status: 200 })
+            }
         }
 
         const filePath = await resolveCyclesPath()
@@ -62,10 +68,11 @@ export async function GET() {
                 // ignore malformed lines
             }
         }
-        const payload = SlimCyclesResponseSchema.parse({ events: slimEvents })
-        return NextResponse.json(payload, { status: 200 })
+        const payload = SlimCyclesResponseSchema.safeParse({ events: slimEvents })
+        if (payload.success) return NextResponse.json(payload.data, { status: 200 })
+        return NextResponse.json({ events: [] }, { status: 200 })
     } catch (err) {
-        return NextResponse.json({ error: 'Failed to read cycles data' }, { status: 500 })
+        return NextResponse.json({ events: [] }, { status: 200 })
     }
 }
 
