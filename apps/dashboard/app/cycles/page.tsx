@@ -1,25 +1,24 @@
 import { z } from 'zod'
 
-const SlimCycleEventSchema = z.object({ ts: z.number(), type: z.enum(['user', 'decision']), data: z.unknown() })
-const SlimCyclesResponseSchema = z.object({ events: z.array(SlimCycleEventSchema) })
-
-function getBaseUrl() {
-    if (process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL && process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL.length > 0) {
-        return process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL
-    }
-    if (process.env.VERCEL_URL && process.env.VERCEL_URL.length > 0) {
-        return `https://${process.env.VERCEL_URL}`
-    }
-    return 'http://localhost:3000'
-}
+const SlimCycleEventSchema = z.object({ ts: z.number(), type: z.enum(['user', 'decision']), data: z.unknown() }).passthrough()
+const SlimCyclesResponseSchema = z.object({ events: z.array(SlimCycleEventSchema) }).passthrough()
 
 async function fetchCycles() {
-    const base = getBaseUrl()
-    const url = new URL('/api/cycles', base).toString()
-    const res = await fetch(url, { next: { revalidate: 5 } })
-    if (!res.ok) throw new Error('Failed to fetch cycles')
-    const data = await res.json()
-    return SlimCyclesResponseSchema.parse(data)
+    try {
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
+        if (!res.ok) return { events: [] }
+        const data = await res.json()
+        const parsed = SlimCyclesResponseSchema.safeParse(data)
+        if (parsed.success) {
+            return parsed.data
+        } else {
+            // Fallback: return raw data if schema parsing fails
+            return { events: Array.isArray(data?.events) ? data.events : [] }
+        }
+    } catch (err) {
+        return { events: [] }
+    }
 }
 
 function formatJson(data: unknown): string {
