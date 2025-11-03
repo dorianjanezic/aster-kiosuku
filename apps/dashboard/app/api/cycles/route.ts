@@ -33,7 +33,7 @@ async function resolveCyclesPath(): Promise<string> {
 export async function GET() {
     try {
         // Always try to fetch from backend first
-        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
         try {
             const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
             if (res.ok) {
