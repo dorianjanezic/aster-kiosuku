@@ -38,21 +38,17 @@ async function fetchPairs() {
     try {
         const res = await fetch('/api/pairs', { cache: 'no-store' })
         if (!res.ok) {
-            console.error('Pairs API returned status:', res.status)
             return { asOf: Date.now(), pairs: [] }
         }
         const data = await res.json()
-        console.log('Pairs API response:', data)
         const parsed = PairsResponseSchema.safeParse(data)
         if (parsed.success) {
-            console.log('Parsed pairs successfully, count:', parsed.data.pairs?.length || 0)
             return parsed.data
         } else {
-            console.error('Failed to parse pairs data:', parsed.error)
+            // Fallback: return raw data if schema parsing fails
             return { asOf: data?.asOf || Date.now(), pairs: Array.isArray(data?.pairs) ? data.pairs : [] }
         }
     } catch (err) {
-        console.error('Error fetching pairs:', err)
         return { asOf: Date.now(), pairs: [] }
     }
 }
@@ -66,11 +62,10 @@ async function fetchCycles() {
         if (parsed.success) {
             return parsed.data
         } else {
-            console.error('Failed to parse cycles data:', parsed.error)
+            // Fallback: return raw data if schema parsing fails
             return { events: Array.isArray(data?.events) ? data.events : [] }
         }
     } catch (err) {
-        console.error('Error fetching cycles:', err)
         return { events: [] }
     }
 }
@@ -84,11 +79,10 @@ async function fetchPortfolio() {
         if (parsed.success) {
             return parsed.data
         } else {
-            console.error('Failed to parse portfolio data:', parsed.error)
+            // Fallback: return safe defaults if schema parsing fails
             return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
         }
     } catch (err) {
-        console.error('Error fetching portfolio:', err)
         return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
     }
 }
