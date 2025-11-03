@@ -1,18 +1,29 @@
 import { z } from 'zod'
 
-const PositionSchema = z.object({ symbol: z.string(), netQty: z.number(), avgEntry: z.number().nullable(), mid: z.number().nullable(), notional: z.number().nullable(), upnl: z.number().nullable() })
-const PairPerfSchema = z.object({ key: z.string(), long: z.string(), short: z.string(), upnl: z.number(), notionalEntry: z.number(), percent: z.number() })
-const PortfolioResponseSchema = z.object({ summary: z.object({ baseBalance: z.number(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }), positions: z.array(PositionSchema), pairs: z.array(PairPerfSchema) })
+const PositionSchema = z.object({ symbol: z.string(), netQty: z.number(), avgEntry: z.number().nullable(), mid: z.number().nullable(), notional: z.number().nullable(), upnl: z.number().nullable() }).passthrough()
+const PairPerfSchema = z.object({ key: z.string(), long: z.string(), short: z.string(), upnl: z.number(), notionalEntry: z.number(), percent: z.number() }).passthrough()
+const PortfolioResponseSchema = z.object({
+    summary: z.object({ baseBalance: z.number(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }),
+    positions: z.array(PositionSchema),
+    pairs: z.array(PairPerfSchema)
+}).passthrough()
 
-// Use relative API routes within the app
+// Fetch directly from Railway backend to avoid Vercel API route issues
 
 async function fetchPortfolio() {
     try {
-        const res = await fetch('/api/portfolio', { cache: 'no-store' })
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        const res = await fetch(new URL('/api/portfolio', backend).toString(), { cache: 'no-store' })
         if (!res.ok) return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
         const data = await res.json()
-        return PortfolioResponseSchema.parse(data)
-    } catch {
+        const parsed = PortfolioResponseSchema.safeParse(data)
+        if (parsed.success) {
+            return parsed.data
+        } else {
+            // Fallback: return safe defaults if schema parsing fails
+            return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
+        }
+    } catch (err) {
         return { summary: { baseBalance: 10000, totalNotional: 0, totalUpnl: 0, equity: 10000 }, positions: [], pairs: [] }
     }
 }
