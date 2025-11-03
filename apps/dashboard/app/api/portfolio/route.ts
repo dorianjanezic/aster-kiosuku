@@ -162,8 +162,8 @@ export async function GET() {
             .filter(([, p]) => Math.abs(p.netQty) > 1e-12)
             .map(([symbol, p]) => {
                 const directMid = priceMap.get(symbol)
-                const pair = pairs.pairs.find(pp => pp.long === symbol || pp.short === symbol)
-                const pairMid = pair ? (pair.long === symbol ? pair.prices.long.mid : pair.prices.short.mid) : undefined
+                const pair = (pairs as any).pairs.find((pp: any) => pp?.long === symbol || pp?.short === symbol) as any
+                const pairMid = pair ? (pair.long === symbol ? pair.prices?.long?.mid : pair.prices?.short?.mid) : undefined
                 const mid = (typeof directMid === 'number') ? directMid : (typeof pairMid === 'number' ? pairMid : null)
                 const notional = mid != null ? Math.abs(p.netQty) * mid : null
                 const upnl = p.avgPrice != null && mid != null ? (mid - p.avgPrice) * p.netQty : 0
