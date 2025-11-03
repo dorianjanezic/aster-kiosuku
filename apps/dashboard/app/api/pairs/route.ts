@@ -4,25 +4,25 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 const PriceSchema = z.object({
-    last: z.number(),
-    bestBid: z.number(),
-    bestAsk: z.number(),
-    mid: z.number()
+    last: z.number().optional(),
+    bestBid: z.number().optional(),
+    bestAsk: z.number().optional(),
+    mid: z.number().optional()
 })
 
 const PairSchema = z.object({
     long: z.string(),
     short: z.string(),
-    corr: z.number(),
-    beta: z.number(),
-    hedgeRatio: z.number(),
-    cointegration: z.object({ adfT: z.number(), p: z.number().nullable(), lags: z.number(), halfLife: z.number(), stationary: z.boolean() }),
-    spreadZ: z.number(),
+    corr: z.number().optional(),
+    beta: z.number().optional(),
+    hedgeRatio: z.number().optional(),
+    cointegration: z.object({ adfT: z.number().optional(), p: z.number().nullable().optional(), lags: z.number().optional(), halfLife: z.number().optional(), stationary: z.boolean().optional() }).optional(),
+    spreadZ: z.number().optional(),
     fundingNet: z.number().optional(),
-    scores: z.object({ long: z.number(), short: z.number(), composite: z.number() }),
+    scores: z.object({ long: z.number().optional(), short: z.number().optional(), composite: z.number().optional() }).optional(),
     notes: z.array(z.string()).optional(),
     sector: z.string().optional(),
-    prices: z.object({ long: PriceSchema, short: PriceSchema })
+    prices: z.object({ long: PriceSchema, short: PriceSchema }).optional()
 })
 
 const PairsFileSchema = z.object({ asOf: z.number().optional(), pairs: z.array(PairSchema) })
@@ -49,9 +49,12 @@ export async function GET() {
         const backend = process.env.BACKEND_BASE_URL
         if (backend) {
             const res = await fetch(new URL('/api/pairs', backend).toString(), { cache: 'no-store' })
-            if (!res.ok) return NextResponse.json({ error: 'Backend pairs fetch failed' }, { status: 502 })
+            if (!res.ok) return NextResponse.json({ asOf: Date.now(), pairs: [] }, { status: 200 })
             const json = await res.json()
-            return NextResponse.json(json, { status: 200 })
+            // Try to validate, but fail-soft
+            const parsed = PairsFileSchema.safeParse(json)
+            if (parsed.success) return NextResponse.json(parsed.data, { status: 200 })
+            return NextResponse.json({ asOf: Date.now(), pairs: Array.isArray(json?.pairs) ? json.pairs : [] }, { status: 200 })
         }
 
         const filePath = await resolvePairsPath()
@@ -64,10 +67,11 @@ export async function GET() {
         } else {
             parsed = JSON.parse(raw)
         }
-        const data = PairsFileSchema.parse(parsed)
-        return NextResponse.json(data, { status: 200 })
+        const safe = PairsFileSchema.safeParse(parsed)
+        if (safe.success) return NextResponse.json(safe.data, { status: 200 })
+        return NextResponse.json({ asOf: Date.now(), pairs: Array.isArray((parsed as any)?.pairs) ? (parsed as any).pairs : [] }, { status: 200 })
     } catch (err) {
-        return NextResponse.json({ error: 'Failed to read pairs data' }, { status: 500 })
+        return NextResponse.json({ asOf: Date.now(), pairs: [] }, { status: 200 })
     }
 }
 
