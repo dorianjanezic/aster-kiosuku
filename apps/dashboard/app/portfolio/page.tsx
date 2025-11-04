@@ -149,7 +149,7 @@ export default async function PortfolioPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {orders.slice().reverse().map((order, index) => {
+                            {orders.slice().reverse().map((order: any, index: number) => {
                                 const timestamp = new Date(order.ts).toLocaleString()
                                 const data = order.data || {}
 
@@ -169,11 +169,10 @@ export default async function PortfolioPage() {
                                     <tr key={`${order.ts}-${index}`} className="border-b border-border/50 hover:bg-muted/50">
                                         <td className="px-4 py-3 font-mono text-xs">{timestamp}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                                order.type === 'order' ? 'bg-blue-100 text-blue-800' :
+                                            <span className={`px-2 py-1 rounded text-xs font-medium ${order.type === 'order' ? 'bg-blue-100 text-blue-800' :
                                                 order.type === 'pair_exit' ? 'bg-red-100 text-red-800' :
-                                                'bg-gray-100 text-gray-800'
-                                            }`}>
+                                                    'bg-gray-100 text-gray-800'
+                                                }`}>
                                                 {order.type}
                                             </span>
                                         </td>
@@ -186,11 +185,10 @@ export default async function PortfolioPage() {
                                         <td className="px-4 py-3 text-right font-mono">{displayData.qty || displayData.executedQty || 'N/A'}</td>
                                         <td className="px-4 py-3 text-right font-mono">{displayData.price ? `$${displayData.price.toFixed(4)}` : 'N/A'}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded text-xs ${
-                                                displayData.status === 'FILLED' ? 'bg-green-100 text-green-800' :
+                                            <span className={`px-2 py-1 rounded text-xs ${displayData.status === 'FILLED' ? 'bg-green-100 text-green-800' :
                                                 displayData.status === 'CLOSED' ? 'bg-red-100 text-red-800' :
-                                                'bg-yellow-100 text-yellow-800'
-                                            }`}>
+                                                    'bg-yellow-100 text-yellow-800'
+                                                }`}>
                                                 {displayData.status || 'N/A'}
                                             </span>
                                         </td>
