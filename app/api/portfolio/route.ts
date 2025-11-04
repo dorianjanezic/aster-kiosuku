@@ -42,6 +42,11 @@ const MarketsSchema = z.object({
 async function resolvePath(...segments: string[]): Promise<string> {
     const cwd = process.cwd()
     const candidates = [
+        // project root
+        path.join(cwd, 'sim_data', ...segments),
+        // monorepo child app calling root API (just in case)
+        path.join(cwd, '..', 'sim_data', ...segments),
+        // legacy two-up (noop on root but safe)
         path.join(cwd, '..', '..', 'sim_data', ...segments),
         path.join(cwd, 'public', 'data', ...segments)
     ]

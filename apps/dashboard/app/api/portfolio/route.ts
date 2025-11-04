@@ -46,6 +46,8 @@ async function resolvePath(...segments: string[]): Promise<string> {
     const cwd = process.cwd()
     const candidates = [
         path.join(cwd, '..', '..', 'sim_data', ...segments),
+        path.join(cwd, 'sim_data', ...segments),
+        path.join(cwd, '..', 'sim_data', ...segments),
         path.join(cwd, 'public', 'data', ...segments)
     ]
     for (const p of candidates) {
@@ -56,49 +58,51 @@ async function resolvePath(...segments: string[]): Promise<string> {
 
 export async function GET() {
     try {
-        // Always try to fetch from backend first
+        const preferBackend = process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_PREFER_BACKEND === '1' || process.env.PREFER_BACKEND === '1'
+        if (!preferBackend) {
+            // Prefer latest portfolio snapshot if available (to match cycles during local dev)
+            const portfolioPath = await resolvePath('portfolio.jsonl')
+            try {
+                const raw = await fs.readFile(portfolioPath, 'utf8')
+                const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+                const last = lines.length > 0 ? JSON.parse(lines[lines.length - 1]) : null
+                if (last && last.type === 'portfolio' && last.data && typeof last.ts === 'number') {
+                    const acc = last.data.account
+                    const positions = Array.isArray(last.data.positions) ? last.data.positions : []
+                    const totalNotional = positions.reduce((a: number, p: any) => a + Math.abs((p?.qty || 0) * (p?.mid || 0)), 0)
+                    const totalUpnl = positions.reduce((a: number, p: any) => {
+                        const mid = typeof p?.mid === 'number' ? p.mid : null
+                        const entry = typeof p?.entryPrice === 'number' ? p.entryPrice : null
+                        const qty = typeof p?.qty === 'number' ? p.qty : 0
+                        const recomputed = (mid != null && entry != null) ? (mid - entry) * qty : 0
+                        return a + recomputed
+                    }, 0)
+                    const startingBalance = Number(process.env.PORTFOLIO_BASE_BALANCE || 10000)
+                    return NextResponse.json({
+                        summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity: acc?.equityUsd ?? ((acc?.balanceUsd ?? 10000) + totalUpnl) },
+                        positions: positions.map((p: any) => {
+                            const mid = (p as any).mid
+                            const qty = p.qty
+                            const upnl = (typeof mid === 'number' && typeof p.entryPrice === 'number') ? (mid - p.entryPrice) * qty : (p.unrealizedPnl ?? 0)
+                            return { symbol: p.symbol, netQty: qty, avgEntry: p.entryPrice, mid: (p as any).mid ?? null, notional: (qty && mid != null) ? Math.abs(qty * mid) : null, upnl }
+                        }),
+                        pairs: []
+                    }, { status: 200 })
+                }
+            } catch { /* fall through */ }
+        }
+
+        // Try backend next (always used in production)
         const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
         try {
             const res = await fetch(new URL('/api/portfolio', backend).toString(), { cache: 'no-store' })
             if (res.ok) {
                 const json = await res.json()
-                // Pass through backend response as-is
                 return NextResponse.json(json, { status: 200 })
             }
         } catch (fetchErr) {
             console.error('Backend fetch failed:', fetchErr)
         }
-
-        // Prefer latest portfolio snapshot if available
-        const portfolioPath = await resolvePath('portfolio.jsonl')
-        try {
-            const raw = await fs.readFile(portfolioPath, 'utf8')
-            const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
-            const last = lines.length > 0 ? JSON.parse(lines[lines.length - 1]) : null
-            if (last && last.type === 'portfolio' && last.data && typeof last.ts === 'number') {
-                const acc = last.data.account
-                const positions = Array.isArray(last.data.positions) ? last.data.positions : []
-                const totalNotional = positions.reduce((a: number, p: any) => a + Math.abs((p?.qty || 0) * (p?.mid || 0)), 0)
-                const totalUpnl = positions.reduce((a: number, p: any) => {
-                    const mid = typeof p?.mid === 'number' ? p.mid : null
-                    const entry = typeof p?.entryPrice === 'number' ? p.entryPrice : null
-                    const qty = typeof p?.qty === 'number' ? p.qty : 0
-                    const recomputed = (mid != null && entry != null) ? (mid - entry) * qty : 0
-                    return a + recomputed
-                }, 0)
-                const startingBalance = Number(process.env.PORTFOLIO_BASE_BALANCE || 10000)
-                return NextResponse.json({
-                    summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity: acc?.equityUsd ?? ((acc?.balanceUsd ?? 10000) + totalUpnl) },
-                    positions: positions.map((p: any) => {
-                        const mid = (p as any).mid
-                        const qty = p.qty
-                        const upnl = (typeof mid === 'number' && typeof p.entryPrice === 'number') ? (mid - p.entryPrice) * qty : (p.unrealizedPnl ?? 0)
-                        return { symbol: p.symbol, netQty: qty, avgEntry: p.entryPrice, mid: (p as any).mid ?? null, notional: (qty && mid != null) ? Math.abs(qty * mid) : null, upnl }
-                    }),
-                    pairs: []
-                }, { status: 200 })
-            }
-        } catch { /* fall through to compute path */ }
         const ordersPath = await resolvePath('orders.jsonl')
         const pairsPath = await resolvePath('pairs.json')
         const marketsPath = await resolvePath('markets.json')

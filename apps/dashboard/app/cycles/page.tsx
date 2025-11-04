@@ -8,7 +8,7 @@ async function fetchCycles() {
         const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
         const res = await fetch(new URL('/api/cycles', backend).toString(), { cache: 'no-store' })
         if (!res.ok) return { events: [] }
-        const data = await res.json()
+    const data = await res.json()
         const parsed = SlimCyclesResponseSchema.safeParse(data)
         if (parsed.success) {
             return parsed.data
