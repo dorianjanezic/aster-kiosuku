@@ -183,7 +183,7 @@ export default async function PortfolioPage() {
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-right font-mono">{displayData.qty || displayData.executedQty || 'N/A'}</td>
-                                        <td className="px-4 py-3 text-right font-mono">{displayData.price ? `$${displayData.price.toFixed(4)}` : 'N/A'}</td>
+                                        <td className="px-4 py-3 text-right font-mono">{typeof displayData.price === 'number' ? `$${displayData.price.toFixed(4)}` : 'N/A'}</td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 rounded text-xs ${displayData.status === 'FILLED' ? 'bg-green-100 text-green-800' :
                                                 displayData.status === 'CLOSED' ? 'bg-red-100 text-red-800' :
