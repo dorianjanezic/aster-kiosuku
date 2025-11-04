@@ -8,6 +8,16 @@ const PortfolioResponseSchema = z.object({
     pairs: z.array(PairPerfSchema)
 }).passthrough()
 
+// Orders schemas
+const OrderEventSchema = z.object({
+    ts: z.number(),
+    type: z.string(),
+    data: z.record(z.any())
+}).passthrough()
+const OrdersResponseSchema = z.object({
+    events: z.array(OrderEventSchema)
+}).passthrough()
+
 // Fetch directly from Railway backend to avoid Vercel API route issues
 
 async function fetchPortfolio() {
@@ -28,8 +38,29 @@ async function fetchPortfolio() {
     }
 }
 
+async function fetchOrders() {
+    try {
+        const backend = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || process.env.NEXT_PUBLIC_DASHBOARD_BASE_URL || 'https://aster-kiosuku-production.up.railway.app'
+        const res = await fetch(new URL('/api/orders?limit=100', backend).toString(), { cache: 'no-store' })
+        if (!res.ok) return { events: [] }
+        const data = await res.json()
+        const parsed = OrdersResponseSchema.safeParse(data)
+        if (parsed.success) {
+            return parsed.data
+        } else {
+            // Fallback: return raw data if schema parsing fails
+            return { events: Array.isArray(data?.events) ? data.events : [] }
+        }
+    } catch (err) {
+        return { events: [] }
+    }
+}
+
 export default async function PortfolioPage() {
-    const { positions, summary, pairs } = await fetchPortfolio()
+    const [{ positions, summary, pairs }, { events: orders }] = await Promise.all([
+        fetchPortfolio(),
+        fetchOrders()
+    ])
     return (
         <main>
             <h2 className="mb-3 text-base font-semibold">Portfolio</h2>
@@ -99,6 +130,88 @@ export default async function PortfolioPage() {
                     </table>
                 </div>
             ) : null}
+
+            {/* Orders History */}
+            <div className="mt-6">
+                <h3 className="mb-3 text-base font-semibold">Order History</h3>
+                <div className="overflow-x-auto rounded-lg border border-border">
+                    <table className="min-w-[800px] w-full border-collapse text-sm">
+                        <thead>
+                            <tr className="border-b">
+                                <th className="px-4 py-2 text-left font-medium">Time</th>
+                                <th className="px-4 py-2 text-left font-medium">Type</th>
+                                <th className="px-4 py-2 text-left font-medium">Symbol</th>
+                                <th className="px-4 py-2 text-left font-medium">Side</th>
+                                <th className="px-4 py-2 text-right font-medium">Qty</th>
+                                <th className="px-4 py-2 text-right font-medium">Price</th>
+                                <th className="px-4 py-2 text-left font-medium">Status</th>
+                                <th className="px-4 py-2 text-left font-medium">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {orders.slice().reverse().map((order, index) => {
+                                const timestamp = new Date(order.ts).toLocaleString()
+                                const data = order.data || {}
+
+                                let displayData = { ...data }
+                                if (order.type === 'pair_exit') {
+                                    displayData = {
+                                        symbol: 'PAIR',
+                                        side: 'EXIT',
+                                        qty: 'N/A',
+                                        price: 'N/A',
+                                        status: 'CLOSED',
+                                        realizedPnl: data.realizedPnlUsd ? `$${data.realizedPnlUsd.toFixed(2)}` : 'N/A'
+                                    }
+                                }
+
+                                return (
+                                    <tr key={`${order.ts}-${index}`} className="border-b border-border/50 hover:bg-muted/50">
+                                        <td className="px-4 py-3 font-mono text-xs">{timestamp}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                                order.type === 'order' ? 'bg-blue-100 text-blue-800' :
+                                                order.type === 'pair_exit' ? 'bg-red-100 text-red-800' :
+                                                'bg-gray-100 text-gray-800'
+                                            }`}>
+                                                {order.type}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 font-medium">{displayData.symbol || 'N/A'}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={displayData.side === 'BUY' ? 'text-green-600' : displayData.side === 'SELL' ? 'text-red-600' : ''}>
+                                                {displayData.side || 'N/A'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-mono">{displayData.qty || displayData.executedQty || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-right font-mono">{displayData.price ? `$${displayData.price.toFixed(4)}` : 'N/A'}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded text-xs ${
+                                                displayData.status === 'FILLED' ? 'bg-green-100 text-green-800' :
+                                                displayData.status === 'CLOSED' ? 'bg-red-100 text-red-800' :
+                                                'bg-yellow-100 text-yellow-800'
+                                            }`}>
+                                                {displayData.status || 'N/A'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">
+                                            {order.type === 'pair_exit' && displayData.realizedPnl ?
+                                                `Realized P&L: ${displayData.realizedPnl}` :
+                                                displayData.orderId || 'N/A'
+                                            }
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                    {orders.length === 0 && (
+                        <div className="text-center py-8 text-muted-foreground">
+                            No order history available
+                        </div>
+                    )}
+                </div>
+            </div>
         </main>
     )
 }
