@@ -134,9 +134,9 @@ export default async function PortfolioPage() {
             {/* Orders History */}
             <div className="mt-6">
                 <h3 className="mb-3 text-base font-semibold">Order History</h3>
-                <div className="overflow-x-auto rounded-lg border border-border">
+                <div className="overflow-x-auto overflow-y-auto h-96 rounded-lg border border-border">
                     <table className="min-w-[800px] w-full border-collapse text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-background">
                             <tr className="border-b">
                                 <th className="px-4 py-2 text-left font-medium">Time</th>
                                 <th className="px-4 py-2 text-left font-medium">Type</th>
