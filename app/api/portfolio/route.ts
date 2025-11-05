@@ -76,8 +76,12 @@ export async function GET() {
                     return a + recomputed
                 }, 0)
                 const startingBalance = Number(process.env.PORTFOLIO_BASE_BALANCE || 10000)
+                const equityFromAcc = acc?.equityUsd
+                const balanceFromAcc = acc?.balanceUsd
+                const equity = typeof equityFromAcc === 'number' ? equityFromAcc : ((balanceFromAcc ?? startingBalance) + totalUpnl)
+                const balance = typeof balanceFromAcc === 'number' ? balanceFromAcc : (equity - totalUpnl)
                 return NextResponse.json({
-                    summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity: acc?.equityUsd ?? ((acc?.balanceUsd ?? 10000) + totalUpnl) },
+                    summary: { baseBalance: startingBalance, balance, totalNotional, totalUpnl, equity },
                     positions: positions.map((p: any) => {
                         const mid = (p as any).mid
                         const qty = p.qty
@@ -176,7 +180,7 @@ export async function GET() {
         }
 
         return NextResponse.json({
-            summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity },
+            summary: { baseBalance: startingBalance, balance: currentBalance, totalNotional, totalUpnl, equity },
             positions,
             pairs: pairSummaries
         }, { status: 200 })
