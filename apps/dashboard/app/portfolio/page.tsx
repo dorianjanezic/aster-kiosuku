@@ -83,12 +83,19 @@ export default async function PortfolioPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {positions.map((p) => (
+                        {positions.map((p) => {
+                            const fmtPx = (v: number | null) => {
+                                if (v == null) return '-'
+                                const abs = Math.abs(v)
+                                const decimals = abs >= 100 ? 2 : abs >= 1 ? 2 : abs >= 0.1 ? 4 : 6
+                                return v.toFixed(decimals)
+                            }
+                            return (
                             <tr key={p.symbol} className="border-b border-border/50 hover:bg-muted/50">
                                 <td className="px-4 py-3">{p.symbol}</td>
                                 <td className="px-4 py-3 text-right font-mono">{p.netQty.toFixed(2)}</td>
-                                <td className="px-4 py-3 text-right font-mono">{p.avgEntry != null ? p.avgEntry.toFixed(2) : '-'}</td>
-                                <td className="px-4 py-3 text-right font-mono">{p.mid != null ? p.mid.toFixed(2) : '-'}</td>
+                                <td className="px-4 py-3 text-right font-mono">{fmtPx(p.avgEntry)}</td>
+                                <td className="px-4 py-3 text-right font-mono">{fmtPx(p.mid)}</td>
                                 <td className="px-4 py-3 text-right font-mono">{p.notional != null ? p.notional.toFixed(2) : '-'}</td>
                                 <td className="px-4 py-3 text-right font-mono">
                                     {p.upnl != null ? (
@@ -98,7 +105,8 @@ export default async function PortfolioPage() {
                                     ) : '-'}
                                 </td>
                             </tr>
-                        ))}
+                            )
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -159,7 +167,7 @@ export default async function PortfolioPage() {
                                     const legA = Array.isArray((data as any)?.legs) ? (data as any).legs[0] : undefined
                                     const legB = Array.isArray((data as any)?.legs) ? (data as any).legs[1] : undefined
                                     const qtyStr = legA && legB ? `${typeof legA.qty === 'number' ? legA.qty.toFixed(2) : 'N/A'}/${typeof legB.qty === 'number' ? legB.qty.toFixed(2) : 'N/A'}` : 'N/A'
-                                    const pxStr = legA && legB ? `${typeof legA.price === 'number' ? legA.price.toFixed(2) : 'N/A'}/${typeof legB.price === 'number' ? legB.price.toFixed(2) : 'N/A'}` : 'N/A'
+                                    const pxStr = legA && legB ? `${typeof legA.entryRef === 'number' ? legA.entryRef.toFixed(6) : 'N/A'}→${typeof legA.exitPrice === 'number' ? legA.exitPrice.toFixed(6) : 'N/A'}/${typeof legB.entryRef === 'number' ? legB.entryRef.toFixed(6) : 'N/A'}→${typeof legB.exitPrice === 'number' ? legB.exitPrice.toFixed(6) : 'N/A'}` : 'N/A'
                                     displayData = {
                                         symbol: pairSym,
                                         side: 'EXIT',
@@ -167,6 +175,19 @@ export default async function PortfolioPage() {
                                         price: pxStr,
                                         status: 'CLOSED',
                                         realizedPnl: typeof data.realizedPnlUsd === 'number' ? `$${data.realizedPnlUsd.toFixed(2)}` : 'N/A'
+                                    }
+                                } else if (order.type === 'pair_enter') {
+                                    const pairSym = data?.pair?.long && data?.pair?.short ? `${data.pair.long}/${data.pair.short}` : 'PAIR'
+                                    const legA = Array.isArray((data as any)?.legs) ? (data as any).legs[0] : undefined
+                                    const legB = Array.isArray((data as any)?.legs) ? (data as any).legs[1] : undefined
+                                    const qtyStr = legA && legB ? `${typeof legA.qty === 'number' ? legA.qty.toFixed(2) : 'N/A'}/${typeof legB.qty === 'number' ? legB.qty.toFixed(2) : 'N/A'}` : 'N/A'
+                                    const pxStr = legA && legB ? `${typeof legA.entryRef === 'number' ? legA.entryRef.toFixed(6) : 'N/A'}→${typeof legA.executedPrice === 'number' ? legA.executedPrice.toFixed(6) : 'N/A'}/${typeof legB.entryRef === 'number' ? legB.entryRef.toFixed(6) : 'N/A'}→${typeof legB.executedPrice === 'number' ? legB.executedPrice.toFixed(6) : 'N/A'}` : 'N/A'
+                                    displayData = {
+                                        symbol: pairSym,
+                                        side: 'ENTER',
+                                        qty: qtyStr,
+                                        price: pxStr,
+                                        status: 'FILLED'
                                     }
                                 } else if (order.type === 'pair_reduce') {
                                     const pairSym = data?.pair?.long && data?.pair?.short ? `${data.pair.long}/${data.pair.short}` : 'PAIR'

@@ -537,6 +537,17 @@ export class Orchestrator {
                         elapsedMs: 0
                     });
                 } catch { }
+
+                // Log consolidated pair_enter with reference and executed prices
+                try {
+                    await ordersLedger.append('pair_enter', {
+                        pair,
+                        legs: [
+                            { symbol: pair.long, side: 'BUY', qty: longOrd?.executedQty, entryRef: longRef, executedPrice: longOrd?.price },
+                            { symbol: pair.short, side: 'SELL', qty: shortOrd?.executedQty, entryRef: shortRef, executedPrice: shortOrd?.price }
+                        ]
+                    });
+                } catch { }
             } else if (parsed && parsed.mode === 'PAIR' && parsed.signal === 'REDUCE' && parsed.pair?.long && parsed.pair?.short) {
                 // Reduce position size by 50% for risk management
                 try {
@@ -601,19 +612,24 @@ export class Orchestrator {
                 // Compute realized PnL and close both legs via simulator, then record exit
                 try {
                     const pair = parsed.pair;
+                    // Capture entry refs before closing
+                    const longPosPre = (this.sim as any).positions?.find((p: any) => p.symbol === pair.long);
+                    const shortPosPre = (this.sim as any).positions?.find((p: any) => p.symbol === pair.short);
+                    const longEntryRef = longPosPre?.entryPrice;
+                    const shortEntryRef = shortPosPre?.entryPrice;
                     // Compute realized using simulator (removes positions)
                     let realized = 0;
                     try {
                         const longClose = (this.sim as any).closePosition?.(pair.long);
                         const shortClose = (this.sim as any).closePosition?.(pair.short);
                         realized = (longClose?.realizedPnl ?? 0) + (shortClose?.realizedPnl ?? 0);
-                        // Log exit with leg details if available
+                        // Log exit with both entryRef and exit prices
                         await ordersLedger.append('pair_exit', {
                             pair,
                             realizedPnlUsd: realized,
                             legs: [
-                                longClose ? { symbol: pair.long, side: 'SELL', qty: longClose.exitQty, price: longClose.exitPrice } : undefined,
-                                shortClose ? { symbol: pair.short, side: 'BUY', qty: shortClose.exitQty, price: shortClose.exitPrice } : undefined
+                                longClose ? { symbol: pair.long, side: 'SELL', qty: longClose.exitQty, entryRef: longEntryRef, exitPrice: longClose.exitPrice } : undefined,
+                                shortClose ? { symbol: pair.short, side: 'BUY', qty: shortClose.exitQty, entryRef: shortEntryRef, exitPrice: shortClose.exitPrice } : undefined
                             ].filter(Boolean)
                         });
                     } catch { /* ignore */ }
