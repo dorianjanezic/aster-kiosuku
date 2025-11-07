@@ -4,6 +4,11 @@
     "private": true,
     "type": "module",
     "description": "Grok/Gemini tool-using agent for Aster DEX perps (simulation first)",
+    "engines": {
+        "node": ">=20 <21",
+        "pnpm": ">=9 <10"
+    },
+    "packageManager": "pnpm@9.15.9",
     "scripts": {
         "build": "tsc -p tsconfig.json",
         "simulate": "pnpm build && node dist/cli/simulate.js",
