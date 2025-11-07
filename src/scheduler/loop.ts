@@ -65,9 +65,18 @@ export class SchedulerLoop {
             const started = Date.now();
             try {
                 const account = await state.getAccountState();
-                const positions = sim.listPositions().map(p => {
+                const preRaw = sim.listPositions();
+                const preSymbols = Array.from(new Set(preRaw.map(p => p.symbol)));
+                const prePriceMap = new Map<string, number>();
+                try {
+                    await Promise.all(preSymbols.map(async (s) => {
+                        try { const t = await client.getTicker(s); prePriceMap.set(s, t.price); } catch { }
+                    }));
+                } catch { }
+                const positions = preRaw.map(p => {
                     const signedQty = p.positionSide === 'LONG' ? p.positionAmt : -p.positionAmt;
-                    const mid = (() => { try { return sim.getTicker(p.symbol).price; } catch { return undefined; } })();
+                    const live = prePriceMap.get(p.symbol);
+                    const mid = (typeof live === 'number') ? live : (() => { try { return sim.getTicker(p.symbol).price; } catch { return undefined; } })();
                     return {
                         symbol: p.symbol,
                         direction: p.positionSide,
@@ -84,9 +93,18 @@ export class SchedulerLoop {
                 await orchestrator.runOnce();
                 // Post-execution portfolio snapshot to capture changes from new orders
                 const postAccount = await state.getAccountState();
-                const postPositions = sim.listPositions().map(p => {
+                const postRaw = sim.listPositions();
+                const postSymbols = Array.from(new Set(postRaw.map(p => p.symbol)));
+                const postPriceMap = new Map<string, number>();
+                try {
+                    await Promise.all(postSymbols.map(async (s) => {
+                        try { const t = await client.getTicker(s); postPriceMap.set(s, t.price); } catch { }
+                    }));
+                } catch { }
+                const postPositions = postRaw.map(p => {
                     const signedQty = p.positionSide === 'LONG' ? p.positionAmt : -p.positionAmt;
-                    const mid = (() => { try { return sim.getTicker(p.symbol).price; } catch { return undefined; } })();
+                    const live = postPriceMap.get(p.symbol);
+                    const mid = (typeof live === 'number') ? live : (() => { try { return sim.getTicker(p.symbol).price; } catch { return undefined; } })();
                     return {
                         symbol: p.symbol,
                         direction: p.positionSide,
