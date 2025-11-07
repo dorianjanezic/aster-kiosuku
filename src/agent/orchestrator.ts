@@ -584,9 +584,9 @@ export class Orchestrator {
 
                                 realized = longRealized + shortRealized;
 
-                                // Reduce position sizes (keep sign conventions)
+                                // Reduce position sizes (sim stores positive magnitudes for both LONG and SHORT)
                                 longPos.positionAmt = Math.max(0, longPos.positionAmt - longReduceAmt);
-                                shortPos.positionAmt = shortPos.positionAmt + shortReduceAmt; // short positions are negative, adding positive reduces magnitude
+                                shortPos.positionAmt = Math.max(0, shortPos.positionAmt - shortReduceAmt);
                             }
                         }
                     } catch (e) {
