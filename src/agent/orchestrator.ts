@@ -25,6 +25,7 @@ import { getUserPrompt } from '../prompts/user.js';
 import { buildPairCandidates } from '../strategies/pairs/pairTrading.js';
 import { updateMarketsBuckets } from '../lib/buckets.js';
 import { StateService } from '../services/stateService.js';
+import type { SimPosition } from '../services/stateService.js';
 import { pctChanges, pearson, betaYOnX } from '../lib/stats.js';
 
 export class Orchestrator {
@@ -43,7 +44,8 @@ export class Orchestrator {
         const exec = createExecutionProvider((process.env.MODE as any) === 'live' ? 'live' : 'paper', this.sim);
         const handlers = createToolHandlers({ client: this.client, sim: this.sim, ledger: this.ledger, ordersLedger });
         const rawPositions = await handlers.get_positions();
-        const positions = (rawPositions || []).map((p: any) => ({
+        const positions: SimPosition[] = (rawPositions || []).map((p: any, idx: number) => ({
+            positionId: `${p.symbol}:${p.positionSide}:${Number(p.entryPrice ?? 0)}`,
             symbol: p.symbol,
             direction: p.positionSide,
             entryPrice: p.entryPrice,
@@ -58,48 +60,61 @@ export class Orchestrator {
         // Pair-focused mode: skip per-asset technicals/market snapshot for majors
         const technicals: Record<string, Record<string, any>> = {};
         const market: Record<string, any> = {};
-        // Refresh markets computed/metrics, then build pair candidates
-        try { await updateMarketsBuckets(this.client, 'sim_data/markets.json', { interval: '15m', limit: 200, concurrency: 6 }); this.log('buckets: refreshed'); } catch (e) { this.log('buckets error %o', e); }
-        // Build pair candidates with our improved statistical analysis
+        // Hourly pairs pipeline with rotation per cycle
+        const pairsTtlMs = Number(process.env.PAIRS_TTL_MS || String(60 * 60 * 1000));
         let pairs: Array<{ sector?: string; ecosystem?: string; assetType?: string; long: string; short: string; corr?: number; beta?: number; scores?: any; spreadZ?: number; cointegration?: any; fundingNet?: number }> = [];
+        let latestAsOf: number | null = null;
         try {
-            const perGroup = Number(process.env.PAIRS_PER_SECTOR || '10');
-            const res = await buildPairCandidates('sim_data/markets.json', perGroup, this.client);
-            pairs = res.pairs;
-
-            // Add spot reference prices for TP/SL calculation context (skip in offline mode)
-            const isOffline = ((process.env.ASTER_OFFLINE || '').toLowerCase() === '1' || (process.env.ASTER_OFFLINE || '').toLowerCase() === 'true');
-            if (!isOffline) {
-                const symbols = Array.from(new Set(pairs.flatMap(p => [p.long, p.short])));
-                const priceMap = new Map<string, { last?: number; bestBid?: number; bestAsk?: number; mid?: number }>();
-                for (const s of symbols) {
-                    try {
-                        const [tkr, ob] = await Promise.all([
-                            this.client.getTicker(s).catch(() => undefined),
-                            this.client.getOrderbook(s, 5).catch(() => undefined)
-                        ]);
-                        const bestBid = ob?.bids?.[0]?.[0];
-                        const bestAsk = ob?.asks?.[0]?.[0];
-                        const mid = (bestBid != null && bestAsk != null) ? (bestBid + bestAsk) / 2 : undefined;
-                        priceMap.set(s, { last: tkr?.price, bestBid, bestAsk, mid });
-                    } catch (e) {
-                        this.log('price fetch error for %s: %o', s, e);
-                    }
-                }
-                pairs = pairs.map(p => ({
-                    ...p,
-                    prices: {
-                        long: priceMap.get(p.long),
-                        short: priceMap.get(p.short)
-                    }
-                })) as any;
+            const { getDb } = await import('../db/sqlite.js');
+            const db = await getDb();
+            const row = db.prepare('SELECT as_of as asOf, data_json FROM pairs_snapshot ORDER BY as_of DESC LIMIT 1').get() as { asOf: number; data_json: string } | undefined;
+            if (row) {
+                latestAsOf = row.asOf;
+                try { const parsed = JSON.parse(row.data_json); pairs = Array.isArray(parsed?.pairs) ? parsed.pairs : []; } catch { pairs = []; }
             }
+        } catch { }
 
-            // Persist pairs snapshot to SQL
-            try { await this.ledger.append('pairs_snapshot', { asOf: Date.now(), pairs }); } catch { }
-        } catch (e) {
-            this.log('pairs building error: %o', e);
-            await this.ledger.append('pairs_error', { error: String(e) });
+        const isStale = !latestAsOf || (Date.now() - latestAsOf) > pairsTtlMs;
+        if (isStale) {
+            // Refresh markets/buckets and rebuild pairs snapshot
+            try { await updateMarketsBuckets(this.client, 'sim_data/markets.json', { interval: '15m', limit: 200, concurrency: 6 }); this.log('buckets: refreshed'); } catch (e) { this.log('buckets error %o', e); }
+            try {
+                const perGroup = Number(process.env.PAIRS_PER_SECTOR || '10');
+                const res = await buildPairCandidates('sim_data/markets.json', perGroup, this.client);
+                pairs = res.pairs;
+
+                // Attach reference prices if online
+                const isOffline = ((process.env.ASTER_OFFLINE || '').toLowerCase() === '1' || (process.env.ASTER_OFFLINE || '').toLowerCase() === 'true');
+                if (!isOffline) {
+                    const symbols = Array.from(new Set(pairs.flatMap(p => [p.long, p.short])));
+                    const priceMap = new Map<string, { last?: number; bestBid?: number; bestAsk?: number; mid?: number }>();
+                    for (const s of symbols) {
+                        try {
+                            const [tkr, ob] = await Promise.all([
+                                this.client.getTicker(s).catch(() => undefined),
+                                this.client.getOrderbook(s, 5).catch(() => undefined)
+                            ]);
+                            const bestBid = ob?.bids?.[0]?.[0];
+                            const bestAsk = ob?.asks?.[0]?.[0];
+                            const mid = (bestBid != null && bestAsk != null) ? (bestBid + bestAsk) / 2 : undefined;
+                            priceMap.set(s, { last: tkr?.price, bestBid, bestAsk, mid });
+                        } catch (e) {
+                            this.log('price fetch error for %s: %o', s, e);
+                        }
+                    }
+                    pairs = pairs.map(p => ({
+                        ...p,
+                        prices: {
+                            long: priceMap.get(p.long),
+                            short: priceMap.get(p.short)
+                        }
+                    })) as any;
+                }
+                try { await this.ledger.append('pairs_snapshot', { asOf: Date.now(), pairs }); } catch { }
+            } catch (e) {
+                this.log('pairs building error: %o', e);
+                await this.ledger.append('pairs_error', { error: String(e) });
+            }
         }
 
         // Load active pair baselines from SQL
@@ -272,9 +287,43 @@ export class Orchestrator {
             }
         } catch { }
 
+        // Build rotating shortlist for this cycle
+        const usedSymbols = new Set<string>(positions.map(p => p.symbol));
+        const cooldownMin = Number(process.env.REENTER_COOLDOWN_MIN || '120');
+        let recent = [] as any[];
+        try { const svc = new StateService('sim_data/orders.jsonl', this.sim); recent = await svc.getRecentOrders(500, cooldownMin * 60 * 1000) as any[]; } catch { }
+        const recentExitPairs = new Set<string>();
+        for (const e of recent) {
+            const t = e?.type;
+            const long = e?.data?.pair?.long; const short = e?.data?.pair?.short;
+            if (t === 'pair_exit' && long && short) {
+                recentExitPairs.add(`${long}|${short}`);
+                recentExitPairs.add(`${short}|${long}`);
+            }
+        }
+
+        const sortedPairs = [...pairs].sort((a: any, b: any) => {
+            const az = Math.abs(a?.spreadZ ?? 0);
+            const bz = Math.abs(b?.spreadZ ?? 0);
+            if (bz !== az) return bz - az;
+            const ac = a?.scores?.composite ?? -Infinity;
+            const bc = b?.scores?.composite ?? -Infinity;
+            return bc - ac;
+        });
+
+        const eligible = sortedPairs.filter(p => !usedSymbols.has(p.long) && !usedSymbols.has(p.short) && !recentExitPairs.has(`${p.long}|${p.short}`));
+        const windowSize = Math.max(5, Number(process.env.PROMPT_PAIRS_WINDOW_SIZE || '12'));
+        const cycleMs = Number(process.env.ROTATE_CYCLE_MS || String(5 * 60 * 1000));
+        const rotationIdx = Math.floor(Date.now() / cycleMs);
+        const startIdx = (rotationIdx * windowSize) % Math.max(1, eligible.length);
+        const rotated: typeof eligible = [];
+        for (let i = 0; i < Math.min(windowSize, eligible.length); i++) {
+            rotated.push(eligible[(startIdx + i) % eligible.length]);
+        }
+
         const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
             { role: 'system', content: getSystemPrompt() },
-            { role: 'user', content: getUserPrompt({ account, positions, pairs, activePairs }) }
+            { role: 'user', content: getUserPrompt({ account, positions, pairs: rotated, activePairs }) }
         ];
         await this.ledger.append('round_start', { round: 0 });
         // Log raw constructed user message for observability
