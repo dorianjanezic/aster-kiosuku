@@ -199,15 +199,15 @@ export class SimulatedExchange {
         return [...this.positions];
     }
 
-    closePosition(symbol: string): { realizedPnl: number } {
+    closePosition(symbol: string): { realizedPnl: number; exitPrice: number; exitQty: number; side: 'LONG' | 'SHORT' } {
         const idx = this.positions.findIndex(pp => pp.symbol === symbol);
         const pos = this.positions[idx];
-        if (idx < 0 || !pos) return { realizedPnl: 0 };
+        if (idx < 0 || !pos) return { realizedPnl: 0, exitPrice: this.currentPrice(symbol), exitQty: 0, side: 'LONG' };
         const px = this.currentPrice(symbol);
         const dir = pos.positionSide === 'LONG' ? 1 : -1;
         const realizedPnl = (px - pos.entryPrice) * pos.positionAmt * dir;
         this.positions.splice(idx, 1);
-        return { realizedPnl };
+        return { realizedPnl, exitPrice: px, exitQty: Math.abs(pos.positionAmt), side: pos.positionSide };
     }
 }
 

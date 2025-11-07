@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Activity, Zap, Github } from 'lucide-react'
 import Image from 'next/image'
 import { Outfit } from 'next/font/google'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 const outfit = Outfit({
     subsets: ['latin'],
@@ -54,9 +55,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                             <NavTabs />
                         </div>
                     </header>
-                    <main className="fade-in">
-                        {children}
-                    </main>
+                    <TooltipProvider delayDuration={200}>
+                        <main className="fade-in">
+                            {children}
+                        </main>
+                    </TooltipProvider>
                     <footer className="mt-8 border-t border-border pt-4 text-xs text-white/80">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">

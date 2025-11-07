@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { JsonlLedger } from '../persistence/jsonlLedger.js';
+// import { JsonlLedger } from '../persistence/jsonlLedger.js';
+import { SqlEventLedger } from '../persistence/sqlEventLedger.js';
 import { SimulatedExchange } from '../sim/simulatedExchange.js';
 import { PublicClient } from '../http/publicClient.js';
 import { fetchConsolidatedMarkets } from '../lib/consolidateMarkets.js';
@@ -270,7 +271,7 @@ export const compare_coingecko_projects = {
 
 export type ToolHandler = (args: any) => Promise<any>;
 
-export function createToolHandlers(opts: { client: PublicClient; sim: SimulatedExchange; ledger: JsonlLedger; ordersLedger?: JsonlLedger }) {
+export function createToolHandlers(opts: { client: PublicClient; sim: SimulatedExchange; ledger: SqlEventLedger; ordersLedger?: SqlEventLedger }) {
     const metaService = new MarketMetaService();
     void metaService.load().catch(() => { });
     const stateService = new StateService('sim_data/orders.jsonl', opts.sim);

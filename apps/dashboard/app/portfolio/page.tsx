@@ -86,9 +86,9 @@ export default async function PortfolioPage() {
                         {positions.map((p) => (
                             <tr key={p.symbol} className="border-b border-border/50 hover:bg-muted/50">
                                 <td className="px-4 py-3">{p.symbol}</td>
-                                <td className="px-4 py-3 text-right font-mono">{p.netQty.toFixed(4)}</td>
-                                <td className="px-4 py-3 text-right font-mono">{p.avgEntry != null ? p.avgEntry.toFixed(6) : '-'}</td>
-                                <td className="px-4 py-3 text-right font-mono">{p.mid != null ? p.mid.toFixed(6) : '-'}</td>
+                                <td className="px-4 py-3 text-right font-mono">{p.netQty.toFixed(2)}</td>
+                                <td className="px-4 py-3 text-right font-mono">{p.avgEntry != null ? p.avgEntry.toFixed(2) : '-'}</td>
+                                <td className="px-4 py-3 text-right font-mono">{p.mid != null ? p.mid.toFixed(2) : '-'}</td>
                                 <td className="px-4 py-3 text-right font-mono">{p.notional != null ? p.notional.toFixed(2) : '-'}</td>
                                 <td className="px-4 py-3 text-right font-mono">
                                     {p.upnl != null ? (
@@ -123,7 +123,7 @@ export default async function PortfolioPage() {
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-right font-mono">{pp.notionalEntry.toFixed(2)}</td>
-                                    <td className="px-4 py-3 text-right font-mono">{(pp.percent * 100).toFixed(4)}%</td>
+                                    <td className="px-4 py-3 text-right font-mono">{(pp.percent * 100).toFixed(2)}%</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -149,19 +149,38 @@ export default async function PortfolioPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {orders.slice().reverse().map((order: any, index: number) => {
+                            {orders.filter((o: any) => o?.type !== 'order_plan').map((order: any, index: number) => {
                                 const timestamp = new Date(order.ts).toLocaleString()
                                 const data = order.data || {}
 
                                 let displayData = { ...data }
                                 if (order.type === 'pair_exit') {
+                                    const pairSym = data?.pair?.long && data?.pair?.short ? `${data.pair.long}/${data.pair.short}` : 'PAIR'
+                                    const legA = Array.isArray((data as any)?.legs) ? (data as any).legs[0] : undefined
+                                    const legB = Array.isArray((data as any)?.legs) ? (data as any).legs[1] : undefined
+                                    const qtyStr = legA && legB ? `${typeof legA.qty === 'number' ? legA.qty.toFixed(2) : 'N/A'}/${typeof legB.qty === 'number' ? legB.qty.toFixed(2) : 'N/A'}` : 'N/A'
+                                    const pxStr = legA && legB ? `${typeof legA.price === 'number' ? legA.price.toFixed(2) : 'N/A'}/${typeof legB.price === 'number' ? legB.price.toFixed(2) : 'N/A'}` : 'N/A'
                                     displayData = {
-                                        symbol: 'PAIR',
+                                        symbol: pairSym,
                                         side: 'EXIT',
-                                        qty: 'N/A',
-                                        price: 'N/A',
+                                        qty: qtyStr,
+                                        price: pxStr,
                                         status: 'CLOSED',
-                                        realizedPnl: data.realizedPnlUsd ? `$${data.realizedPnlUsd.toFixed(2)}` : 'N/A'
+                                        realizedPnl: typeof data.realizedPnlUsd === 'number' ? `$${data.realizedPnlUsd.toFixed(2)}` : 'N/A'
+                                    }
+                                } else if (order.type === 'pair_reduce') {
+                                    const pairSym = data?.pair?.long && data?.pair?.short ? `${data.pair.long}/${data.pair.short}` : 'PAIR'
+                                    const legA = Array.isArray((data as any)?.legs) ? (data as any).legs[0] : undefined
+                                    const legB = Array.isArray((data as any)?.legs) ? (data as any).legs[1] : undefined
+                                    const qtyStr = legA && legB ? `${typeof legA.qty === 'number' ? legA.qty.toFixed(2) : 'N/A'}/${typeof legB.qty === 'number' ? legB.qty.toFixed(2) : 'N/A'}` : 'N/A'
+                                    const pxStr = legA && legB ? `${typeof legA.price === 'number' ? legA.price.toFixed(2) : 'N/A'}/${typeof legB.price === 'number' ? legB.price.toFixed(2) : 'N/A'}` : 'N/A'
+                                    displayData = {
+                                        symbol: pairSym,
+                                        side: 'REDUCE',
+                                        qty: qtyStr,
+                                        price: pxStr,
+                                        status: 'PARTIAL',
+                                        realizedPnl: typeof data.realizedPnlUsd === 'number' ? `$${data.realizedPnlUsd.toFixed(2)}` : 'N/A'
                                     }
                                 }
 
@@ -182,8 +201,14 @@ export default async function PortfolioPage() {
                                                 {displayData.side || 'N/A'}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono">{displayData.qty || displayData.executedQty || 'N/A'}</td>
-                                        <td className="px-4 py-3 text-right font-mono">{typeof displayData.price === 'number' ? `$${displayData.price.toFixed(4)}` : 'N/A'}</td>
+                                        <td className="px-4 py-3 text-right font-mono">{
+                                            typeof displayData.qty === 'number'
+                                                ? displayData.qty.toFixed(2)
+                                                : typeof displayData.executedQty === 'number'
+                                                    ? displayData.executedQty.toFixed(2)
+                                                    : (displayData.qty || displayData.executedQty || 'N/A')
+                                        }</td>
+                                        <td className="px-4 py-3 text-right font-mono">{typeof displayData.price === 'number' ? `$${displayData.price.toFixed(2)}` : 'N/A'}</td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 rounded text-xs ${displayData.status === 'FILLED' ? 'bg-green-100 text-green-800' :
                                                 displayData.status === 'CLOSED' ? 'bg-red-100 text-red-800' :

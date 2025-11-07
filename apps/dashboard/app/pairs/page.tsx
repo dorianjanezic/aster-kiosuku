@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Search, Filter, SortAsc, SortDesc, AlertCircle, CheckCircle, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
 import { useState, useMemo, useEffect } from 'react'
+import { MetricHeader } from '@/components/MetricHeader'
 
 const PriceSchema = z.object({
     last: z.number(),
@@ -62,7 +63,7 @@ export default function PairsPage() {
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
     const [sectorFilter, setSectorFilter] = useState<string>('all')
-    const [sortField, setSortField] = useState<SortField>('composite')
+    const [sortField, setSortField] = useState<SortField>('spreadZ')
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
     useEffect(() => {
@@ -225,123 +226,110 @@ export default function PairsPage() {
                                         className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted/70 transition-colors"
                                         onClick={() => handleSort('corr')}
                                     >
-                                        <div className="flex items-center justify-end gap-1">
-                                            Correlation
-                                            {getSortIcon('corr')}
-                                        </div>
+                                        <div className="flex items-center justify-end gap-1"><MetricHeader align="right" label="Correlation" tip="Pearson correlation of leg returns (higher = tighter co-movement)" /> {getSortIcon('corr')}</div>
                                     </th>
                                     <th
                                         className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted/70 transition-colors"
                                         onClick={() => handleSort('spreadZ')}
                                     >
-                                        <div className="flex items-center justify-end gap-1">
-                                            Spread Z
-                                            {getSortIcon('spreadZ')}
-                                        </div>
+                                        <div className="flex items-center justify-end gap-1"><MetricHeader align="right" label="Spread Z" tip="Z-score of the cointegrated spread (magnitude shows current divergence)" /> {getSortIcon('spreadZ')}</div>
                                     </th>
                                     <th
                                         className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted/70 transition-colors"
                                         onClick={() => handleSort('halfLife')}
                                     >
-                                        <div className="flex items-center justify-end gap-1">
-                                            Half-Life
-                                            {getSortIcon('halfLife')}
-                                        </div>
+                                        <div className="flex items-center justify-end gap-1"><MetricHeader align="right" label="Half-Life" tip="Estimated mean-reversion half-life of the spread in periods (lower = faster)" /> {getSortIcon('halfLife')}</div>
                                     </th>
                                     <th
                                         className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted/70 transition-colors"
                                         onClick={() => handleSort('beta')}
                                     >
-                                        <div className="flex items-center justify-end gap-1">
-                                            Beta
-                                            {getSortIcon('beta')}
-                                        </div>
+                                        <div className="flex items-center justify-end gap-1"><MetricHeader align="right" label="Beta" tip="Hedge ratio from OLS (used for dollar-neutral sizing)" /> {getSortIcon('beta')}</div>
                                     </th>
                                     <th
                                         className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted/70 transition-colors"
                                         onClick={() => handleSort('fundingNet')}
                                     >
-                                        <div className="flex items-center justify-end gap-1">
-                                            Funding Net
-                                            {getSortIcon('fundingNet')}
-                                        </div>
+                                        <div className="flex items-center justify-end gap-1"><MetricHeader align="right" label="Funding Net" tip="Estimated net funding carry for a dollar-neutral position (higher is better)" /> {getSortIcon('fundingNet')}</div>
                                     </th>
                                     <th
                                         className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted/70 transition-colors"
                                         onClick={() => handleSort('composite')}
                                     >
-                                        <div className="flex items-center justify-end gap-1">
-                                            Score
-                                            {getSortIcon('composite')}
-                                        </div>
+                                        <div className="flex items-center justify-end gap-1"><MetricHeader align="right" label="Score" tip="Composite ranking combining correlation, divergence, half-life, stationarity and technicals" /> {getSortIcon('composite')}</div>
                                     </th>
-                                    <th className="px-4 py-3 text-left font-medium">Sector</th>
+                                    <th className="px-4 py-3 text-left font-medium"><MetricHeader label="Sector" tip="Primary sector(s) of the pair; mixed shows A/B when legs differ" /></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredAndSortedPairs.map((p) => (
-                                    <tr key={`${p.long}|${p.short}`} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                                        <td className="px-4 py-3 font-medium">
-                                            <div className="flex items-center gap-2">
-                                                <span>{p.long} / {p.short}</span>
-                                                {Math.abs(p.spreadZ) > 2 && (
-                                                    <Badge variant="warning" className="text-xs">
-                                                        <AlertCircle className="h-3 w-3 mr-1" />
-                                                        High Z
-                                                    </Badge>
-                                                )}
-                                                {p.cointegration.adfT > -2 && (
-                                                    <Badge variant="destructive" className="text-xs">
-                                                        <AlertCircle className="h-3 w-3 mr-1" />
-                                                        Weak Stationarity
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <span className={p.corr > 0.7 ? "text-green-600 font-medium" : p.corr < 0.5 ? "text-red-600" : ""}>
-                                                {p.corr.toFixed(3)}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                                {p.spreadZ > 0 ? (
-                                                    <TrendingUp className="h-3 w-3 text-green-600" />
+                                {filteredAndSortedPairs.map((p) => {
+                                    const swapped = p.spreadZ > 0
+                                    const dispLong = swapped ? p.short : p.long
+                                    const dispShort = swapped ? p.long : p.short
+                                    const displayedZ = Math.abs(swapped ? -p.spreadZ : p.spreadZ)
+                                    const displayedSector = (() => {
+                                        if (!p.sector) return 'Unknown'
+                                        const parts = String(p.sector).split('/')
+                                        if (parts.length !== 2) return p.sector
+                                        return swapped ? `${parts[1]}/${parts[0]}` : p.sector
+                                    })()
+                                    return (
+                                        <tr key={`${p.long}|${p.short}`} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                                            <td className="px-4 py-3 font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{dispLong} / {dispShort}</span>
+                                                    {Math.abs(p.spreadZ) > 2 && (
+                                                        <Badge variant="warning" className="text-xs">
+                                                            <AlertCircle className="h-3 w-3 mr-1" />
+                                                            High Z
+                                                        </Badge>
+                                                    )}
+                                                    {p.cointegration.adfT > -2 && (
+                                                        <Badge variant="destructive" className="text-xs">
+                                                            <AlertCircle className="h-3 w-3 mr-1" />
+                                                            Weak Stationarity
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <span className={p.corr > 0.7 ? "text-green-600 font-medium" : p.corr < 0.5 ? "text-red-600" : ""}>
+                                                    {p.corr.toFixed(3)}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <span className={displayedZ > 1.5 ? "font-medium" : ""}>
+                                                    {displayedZ.toFixed(3)}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <span className={p.cointegration.halfLife < 25 ? "text-green-600" : p.cointegration.halfLife > 50 ? "text-red-600" : ""}>
+                                                    {p.cointegration.halfLife.toFixed(1)}p
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">{p.beta.toFixed(3)}</td>
+                                            <td className="px-4 py-3 text-right">
+                                                {p.fundingNet != null ? (
+                                                    <span className={p.fundingNet > 0 ? "text-green-600" : "text-red-600"}>
+                                                        {(p.fundingNet * 100).toFixed(4)}%
+                                                    </span>
                                                 ) : (
-                                                    <TrendingDown className="h-3 w-3 text-red-600" />
+                                                    <span className="text-muted-foreground">-</span>
                                                 )}
-                                                <span className={Math.abs(p.spreadZ) > 1.5 ? "font-medium" : ""}>
-                                                    {p.spreadZ.toFixed(3)}
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <span className={p.scores.composite > 0 ? "text-green-600 font-medium" : "text-red-600"}>
+                                                    {p.scores.composite.toFixed(3)}
                                                 </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <span className={p.cointegration.halfLife < 25 ? "text-green-600" : p.cointegration.halfLife > 50 ? "text-red-600" : ""}>
-                                                {p.cointegration.halfLife.toFixed(1)}p
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-right">{p.beta.toFixed(3)}</td>
-                                        <td className="px-4 py-3 text-right">
-                                            {p.fundingNet != null ? (
-                                                <span className={p.fundingNet > 0 ? "text-green-600" : "text-red-600"}>
-                                                    {(p.fundingNet * 100).toFixed(4)}%
-                                                </span>
-                                            ) : (
-                                                <span className="text-muted-foreground">-</span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <span className={p.scores.composite > 0 ? "text-green-600 font-medium" : "text-red-600"}>
-                                                {p.scores.composite.toFixed(3)}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
+                                            </td>
+                                        <td className="px-4 py-3 flex justify-end">
                                             <Badge variant="outline" className="text-xs">
-                                                {p.sector ?? 'Unknown'}
+                                                {displayedSector}
                                             </Badge>
                                         </td>
-                                    </tr>
-                                ))}
+                                        </tr>
+                                    )
+                                })}
                             </tbody>
                         </table>
                     </div>

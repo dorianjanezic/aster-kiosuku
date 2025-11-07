@@ -13,7 +13,7 @@
  * - Real-time state updates for trading decisions
  */
 
-import { readLastLines } from '../persistence/jsonlLedger.js';
+// import { readLastLines } from '../persistence/jsonlLedger.js';
 import type { SimulatedExchange } from '../sim/simulatedExchange.js';
 
 export type SimPosition = {
@@ -72,11 +72,15 @@ export class StateService {
 
     async getRecentOrders(maxLines = 100, maxAgeMs = 10 * 60 * 1000): Promise<Array<unknown>> {
         const cutoff = Date.now() - maxAgeMs;
-        const lines = await readLastLines(this.ordersFile, maxLines);
-        const parsed = lines.map((l) => {
-            try { return JSON.parse(l); } catch { return { parseError: true, raw: l }; }
-        });
-        return parsed.filter((e: any) => e && typeof e === 'object' && typeof e.ts === 'number' && e.ts >= cutoff);
+        try {
+            const { getDb } = await import('../db/sqlite.js');
+            const { SqliteRepo } = await import('../services/sqliteRepo.js');
+            const repo = new SqliteRepo(await getDb());
+            const rows = repo.getRecentOrders(maxLines, cutoff);
+            return rows;
+        } catch {
+            return [];
+        }
     }
 }
 

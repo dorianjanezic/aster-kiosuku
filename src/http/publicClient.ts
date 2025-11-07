@@ -21,10 +21,40 @@ export class PublicClient {
     }
 
     async getExchangeInfo(): Promise<ExchangeInfo> {
-        const res = await fetch(this.url('/exchangeInfo'));
-        if (!res.ok) throw new Error(`exchangeInfo ${res.status}`);
-        const json = await res.json();
-        return ExchangeInfoSchema.parse(json);
+        const url = this.url('/exchangeInfo');
+        let attempt = 0;
+        let lastErr: any;
+        while (attempt < 3) {
+            try {
+                const res = await fetch(url);
+                if (res.ok) {
+                    const json = await res.json();
+                    return ExchangeInfoSchema.parse(json);
+                }
+                // capture details
+                const text = await res.text().catch(() => '');
+                const headers = Object.fromEntries(res.headers.entries());
+                // Respect Retry-After when 429
+                if (res.status === 429) {
+                    const ra = Number(headers['retry-after'] || headers['Retry-After'] || 0);
+                    const waitMs = ra > 0 ? ra * 1000 : (500 * Math.pow(2, attempt));
+                    // eslint-disable-next-line no-console
+                    console.warn('[publicClient] 429 exchangeInfo; retrying in', waitMs, 'ms', { headers });
+                    await new Promise(r => setTimeout(r, waitMs));
+                    attempt++;
+                    continue;
+                }
+                throw new Error(`exchangeInfo ${res.status} body=${text} headers=${JSON.stringify(headers)}`);
+            } catch (e) {
+                lastErr = e;
+                const waitMs = 500 * Math.pow(2, attempt);
+                // eslint-disable-next-line no-console
+                console.warn('[publicClient] getExchangeInfo error; retrying in', waitMs, 'ms', e);
+                await new Promise(r => setTimeout(r, waitMs));
+                attempt++;
+            }
+        }
+        throw lastErr ?? new Error('exchangeInfo failed');
     }
 
     async getAllTickerPrices(): Promise<Array<TickerPrice>> {

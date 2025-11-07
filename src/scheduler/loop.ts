@@ -13,7 +13,8 @@
  */
 
 import { StateService } from '../services/stateService.js';
-import { JsonlLedger } from '../persistence/jsonlLedger.js';
+// import { JsonlLedger } from '../persistence/jsonlLedger.js';
+import { SqlEventLedger } from '../persistence/sqlEventLedger.js';
 import { Orchestrator } from '../agent/orchestrator.js';
 import { PublicClient } from '../http/publicClient.js';
 import { SimulatedExchange } from '../sim/simulatedExchange.js';
@@ -30,8 +31,8 @@ export class SchedulerLoop {
             { symbol: 'SOLUSDT', price: 184 }
         ]);
         const state = new StateService('sim_data/orders.jsonl', sim);
-        const ledger = new JsonlLedger('sim_data/cycles.jsonl');
-        const portfolioLedger = new JsonlLedger('sim_data/portfolio.jsonl');
+        const ledger = new SqlEventLedger();
+        const portfolioLedger = new SqlEventLedger();
         // Start live price monitor (assumes Aster WS base like wss://fapi.asterdex.com/ws or /stream)
         const wsBase = (process.env.ASTER_WS_URL || 'wss://fstream.asterdex.com');
         const priceMon = new PriceMonitorService(`${wsBase}`, ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']);

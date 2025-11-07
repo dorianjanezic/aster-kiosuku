@@ -97,12 +97,25 @@ function teaser(text: string, max = 160): string {
 
 export default async function CyclesPage() {
     const { events } = await fetchCycles()
-    const sorted = [...events].sort((a, b) => b.ts - a.ts)
+    const sorted = [...events]
+        .filter((e) => e.type === 'user' || e.type === 'decision')
+        .sort((a, b) => b.ts - a.ts)
+    // Deduplicate assistant messages emitted twice (assistant_raw + decision) in same second
+    const seenDecisionBucket = new Set<number>()
+    const deduped = [] as typeof sorted
+    for (const e of sorted) {
+        if (e.type === 'decision') {
+            const bucket = Math.floor(e.ts / 1000)
+            if (seenDecisionBucket.has(bucket)) continue
+            seenDecisionBucket.add(bucket)
+        }
+        deduped.push(e)
+    }
     return (
         <main>
             <h2 className="mb-3 text-base font-semibold">Cycles</h2>
             <div className="space-y-3">
-                {sorted.map((e) => {
+                {deduped.map((e) => {
                     const isDecision = e.type === 'decision'
                     const content = formatMessage(e.data)
                     const fullContent = formatJson(e.data)
