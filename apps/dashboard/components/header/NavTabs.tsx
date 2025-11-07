@@ -9,6 +9,7 @@ type Tab = { href: string; label: string }
 
 const tabs: Tab[] = [
     { href: '/', label: 'Dashboard' },
+    { href: '/markets', label: 'Markets' },
     { href: '/pairs', label: 'Pairs' },
     { href: '/cycles', label: 'Cycles' },
     { href: '/portfolio', label: 'Portfolio' }

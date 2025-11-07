@@ -13,7 +13,8 @@
 
 import { createProviderFromEnv, LLMProvider } from '../llm/provider.js';
 import { createToolHandlers } from '../llm/tools.js';
-import { JsonlLedger } from '../persistence/jsonlLedger.js';
+// import { JsonlLedger } from '../persistence/jsonlLedger.js';
+import { SqlEventLedger } from '../persistence/sqlEventLedger.js';
 import { SimulatedExchange } from '../sim/simulatedExchange.js';
 import { createExecutionProvider } from '../execution/provider.js';
 import { PublicClient } from '../http/publicClient.js';
@@ -30,7 +31,7 @@ export class Orchestrator {
     private provider: LLMProvider;
     private log = createDebug('agent:orchestrator');
 
-    constructor(private client: PublicClient, private sim: SimulatedExchange, private ledger: JsonlLedger) {
+    constructor(private client: PublicClient, private sim: SimulatedExchange, private ledger: SqlEventLedger) {
         this.provider = createProviderFromEnv();
     }
 
@@ -38,7 +39,7 @@ export class Orchestrator {
         // Research disabled in no-tools mode
 
         // Disabled tools mode: prefetch state + technicals for majors and do a single JSON response
-        const ordersLedger = new JsonlLedger('sim_data/orders.jsonl');
+        const ordersLedger = new SqlEventLedger();
         const exec = createExecutionProvider((process.env.MODE as any) === 'live' ? 'live' : 'paper', this.sim);
         const handlers = createToolHandlers({ client: this.client, sim: this.sim, ledger: this.ledger, ordersLedger });
         const rawPositions = await handlers.get_positions();
@@ -62,56 +63,53 @@ export class Orchestrator {
         // Build pair candidates with our improved statistical analysis
         let pairs: Array<{ sector?: string; ecosystem?: string; assetType?: string; long: string; short: string; corr?: number; beta?: number; scores?: any; spreadZ?: number; cointegration?: any; fundingNet?: number }> = [];
         try {
-            const res = await buildPairCandidates('sim_data/markets.json', 10, this.client);
-            pairs = res.pairs.slice(0, 10);
+            const perGroup = Number(process.env.PAIRS_PER_SECTOR || '10');
+            const res = await buildPairCandidates('sim_data/markets.json', perGroup, this.client);
+            pairs = res.pairs;
 
-            // Add spot reference prices for TP/SL calculation context
-            const symbols = Array.from(new Set(pairs.flatMap(p => [p.long, p.short])));
-            const priceMap = new Map<string, { last?: number; bestBid?: number; bestAsk?: number; mid?: number }>();
-            for (const s of symbols) {
-                try {
-                    const [tkr, ob] = await Promise.all([
-                        this.client.getTicker(s).catch(() => undefined),
-                        this.client.getOrderbook(s, 5).catch(() => undefined)
-                    ]);
-                    const bestBid = ob?.bids?.[0]?.[0];
-                    const bestAsk = ob?.asks?.[0]?.[0];
-                    const mid = (bestBid != null && bestAsk != null) ? (bestBid + bestAsk) / 2 : undefined;
-                    priceMap.set(s, { last: tkr?.price, bestBid, bestAsk, mid });
-                } catch (e) {
-                    this.log('price fetch error for %s: %o', s, e);
+            // Add spot reference prices for TP/SL calculation context (skip in offline mode)
+            const isOffline = ((process.env.ASTER_OFFLINE || '').toLowerCase() === '1' || (process.env.ASTER_OFFLINE || '').toLowerCase() === 'true');
+            if (!isOffline) {
+                const symbols = Array.from(new Set(pairs.flatMap(p => [p.long, p.short])));
+                const priceMap = new Map<string, { last?: number; bestBid?: number; bestAsk?: number; mid?: number }>();
+                for (const s of symbols) {
+                    try {
+                        const [tkr, ob] = await Promise.all([
+                            this.client.getTicker(s).catch(() => undefined),
+                            this.client.getOrderbook(s, 5).catch(() => undefined)
+                        ]);
+                        const bestBid = ob?.bids?.[0]?.[0];
+                        const bestAsk = ob?.asks?.[0]?.[0];
+                        const mid = (bestBid != null && bestAsk != null) ? (bestBid + bestAsk) / 2 : undefined;
+                        priceMap.set(s, { last: tkr?.price, bestBid, bestAsk, mid });
+                    } catch (e) {
+                        this.log('price fetch error for %s: %o', s, e);
+                    }
                 }
+                pairs = pairs.map(p => ({
+                    ...p,
+                    prices: {
+                        long: priceMap.get(p.long),
+                        short: priceMap.get(p.short)
+                    }
+                })) as any;
             }
-            pairs = pairs.map(p => ({
-                ...p,
-                prices: {
-                    long: priceMap.get(p.long),
-                    short: priceMap.get(p.short)
-                }
-            })) as any;
 
-            // Persist pairs for inspection and as a dedicated ledger
-            try { await this.ledger.append('pairs_snapshot', { pairs }); } catch { }
-            try {
-                const pairsLedger = new JsonlLedger('sim_data/pairs.jsonl');
-                await pairsLedger.append('pairs', { asOf: Date.now(), pairs });
-            } catch { }
-            try {
-                const { promises: fs } = await import('fs');
-                await fs.writeFile('sim_data/pairs.json', JSON.stringify({ asOf: Date.now(), pairs }, null, 2));
-            } catch { }
+            // Persist pairs snapshot to SQL
+            try { await this.ledger.append('pairs_snapshot', { asOf: Date.now(), pairs }); } catch { }
         } catch (e) {
             this.log('pairs building error: %o', e);
             await this.ledger.append('pairs_error', { error: String(e) });
         }
 
-        // Load persisted pair baselines (entry metrics) if available
+        // Load active pair baselines from SQL
         let pairBaselines: Record<string, { entryTime: number; entrySpreadZ?: number; entryHalfLife?: number | null }> = {};
         try {
-            const { promises: fs } = await import('fs');
-            const txt = await fs.readFile('sim_data/pairs_state.json', 'utf8');
-            pairBaselines = JSON.parse(txt);
-        } catch { /* ignore missing */ }
+            const { getDb } = await import('../db/sqlite.js');
+            const { SqliteRepo } = await import('../services/sqliteRepo.js');
+            const repo = new SqliteRepo(await getDb());
+            pairBaselines = repo.getActivePairsBaseline();
+        } catch { }
 
         // Derive active pair performance from current open positions and latest pair stats
         const activePairs: Array<{ long: string; short: string; pnlUsd: number; spreadZ?: number; halfLife?: number | null; entrySpreadZ?: number; deltaSpreadZ?: number; entryHalfLife?: number | null; deltaHalfLife?: number | null; entryTime?: number; elapsedMs?: number }> = [];
@@ -129,41 +127,7 @@ export class Orchestrator {
                 });
             }
 
-            // Fallback: add stats from persisted pairs if not in current top pairs
-            try {
-                const { promises: fs } = await import('fs');
-                const txt = await fs.readFile('sim_data/pairs.json', 'utf8');
-                const parsed = JSON.parse(txt);
-                const persistedPairs = Array.isArray(parsed?.pairs) ? parsed.pairs : [];
-
-                for (const p of persistedPairs) {
-                    if (!p?.long || !p?.short) continue;
-                    const pairKey = createPairKey(p.long, p.short);
-                    if (!pairStatsMap.has(pairKey)) {
-                        pairStatsMap.set(pairKey, {
-                            spreadZ: (p as any)?.spreadZ,
-                            halfLife: (p as any)?.cointegration?.halfLife ?? null
-                        });
-                    }
-                }
-
-                // Additional fallback: get stats from active pairs state for pairs no longer in candidates
-                const stateTxt = await fs.readFile('sim_data/pairs_state.json', 'utf8');
-                const stateData = JSON.parse(stateTxt);
-                for (const [pairKey, pairState] of Object.entries(stateData) as [string, any][]) {
-                    if (!pairStatsMap.has(pairKey) && pairState.entryHalfLife != null) {
-                        // Use the most recent half-life from history
-                        const latestHistory = pairState.history?.[pairState.history.length - 1];
-                        const currentHalfLife = latestHistory?.halfLife ?? pairState.entryHalfLife;
-                        pairStatsMap.set(pairKey, {
-                            spreadZ: latestHistory?.spreadZ ?? pairState.entrySpreadZ,
-                            halfLife: currentHalfLife
-                        });
-                    }
-                }
-            } catch (e) {
-                this.log('fallback pair stats loading error: %o', e);
-            }
+            // Optional: no file-based fallbacks when using SQL-only writes
 
             // Group positions by symbol for efficient lookup
             const positionBySymbol = new Map<string, typeof positions[0]>();
@@ -204,23 +168,22 @@ export class Orchestrator {
 
                     let currentStats = pairStatsMap.get(pairId);
 
-                    // For active pairs, ensure we have stats from pairs_state.json if available
+                    // Backfill stats from SQL if missing
                     if (!currentStats) {
                         try {
-                            const { promises: fs } = await import('fs');
-                            const stateTxt = await fs.readFile('sim_data/pairs_state.json', 'utf8');
-                            const stateData = JSON.parse(stateTxt);
-                            const pairState = stateData[pairId];
-                            if (pairState) {
-                                const latestHistory = pairState.history?.[pairState.history.length - 1];
-                                currentStats = {
-                                    spreadZ: latestHistory?.spreadZ ?? pairState.entrySpreadZ,
-                                    halfLife: latestHistory?.halfLife ?? pairState.entryHalfLife
-                                };
+                            const { getDb } = await import('../db/sqlite.js');
+                            const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                            const repo = new SqliteRepo(await getDb());
+                            const hist = repo.getLatestPairHistory(pairId);
+                            if (hist && (hist.spreadZ != null || hist.halfLife != null)) {
+                                currentStats = { spreadZ: hist.spreadZ ?? undefined, halfLife: hist.halfLife ?? null } as any;
+                            } else {
+                                const snap = repo.getLatestPairStatsFromSnapshot(longSymbol, shortSymbol);
+                                if (snap && (snap.spreadZ != null || snap.halfLife != null)) {
+                                    currentStats = { spreadZ: snap.spreadZ ?? undefined, halfLife: snap.halfLife ?? null } as any;
+                                }
                             }
-                        } catch (e) {
-                            // Ignore errors, currentStats remains undefined
-                        }
+                        } catch { }
                     }
 
                     const longPos = positionBySymbol.get(longSymbol);
@@ -251,18 +214,18 @@ export class Orchestrator {
                         : undefined;
 
                     // Calculate convergence metrics
-                    const convergenceProgress = deltaSpreadZ != null && entrySpreadZ != null ?
+                    const convergenceProgress = (deltaSpreadZ != null && entrySpreadZ != null) ?
                         Math.abs(deltaSpreadZ) / Math.abs(entrySpreadZ) : null;
 
                     // Calculate exit signals
                     const exitSignals = {
-                        profitTarget: Math.abs(currentStats?.spreadZ || 0) <= 0.5,
+                        profitTarget: (currentStats?.spreadZ != null) && Math.abs(currentStats.spreadZ) <= 0.5,
                         timeStop: currentHalfLife != null && elapsedMs != null &&
-                            (elapsedMs / (1000 * 60 * 60)) >= (2 * currentHalfLife), // 2 * halfLife in hours
+                            (elapsedMs / (1000 * 60 * 60)) >= (2 * currentHalfLife),
                         convergence: convergenceProgress != null && convergenceProgress >= 0.5,
-                        riskReduction: pnlUsd <= -40, // Reduce at -$40 loss (~2% of $2000 position)
-                        riskExit: pnlUsd <= -100 // Exit at -$100 loss (~5% of $2000 position)
-                    };
+                        riskReduction: pnlUsd <= -40,
+                        riskExit: pnlUsd <= -100
+                    } as any;
 
                     activePairs.push({
                         long: longSymbol,
@@ -288,21 +251,25 @@ export class Orchestrator {
             await this.ledger.append('active_pairs_error', { error: String(e) });
         }
 
-        // Persist per-cycle snapshots for active pairs into pairs_state.json (history)
+        // Persist per-cycle pair history to SQL
         try {
-            const { promises: fs } = await import('fs');
-            const statePath = 'sim_data/pairs_state.json';
-            let state: Record<string, any> = {};
-            try { const txt = await fs.readFile(statePath, 'utf8'); state = JSON.parse(txt); } catch { }
+            const { getDb } = await import('../db/sqlite.js');
+            const { SqliteRepo } = await import('../services/sqliteRepo.js');
+            const repo = new SqliteRepo(await getDb());
             for (const ap of activePairs) {
                 const id = `${ap.long}|${ap.short}`;
-                if (!state[id]) state[id] = { entryTime: ap.entryTime ?? Date.now(), entrySpreadZ: ap.entrySpreadZ, entryHalfLife: ap.halfLife, history: [] };
-                if (!Array.isArray(state[id].history)) state[id].history = [];
-                const currentElapsedMs = Date.now() - state[id].entryTime;
-                state[id].history.push({ ts: Date.now(), spreadZ: ap.spreadZ, pnlUsd: ap.pnlUsd, halfLife: ap.halfLife, entrySpreadZ: ap.entrySpreadZ, deltaSpreadZ: ap.deltaSpreadZ, entryHalfLife: ap.entryHalfLife, deltaHalfLife: ap.deltaHalfLife, elapsedMs: currentElapsedMs });
+                repo.insertPairHistory(id, {
+                    ts: Date.now(),
+                    spreadZ: ap.spreadZ ?? null,
+                    halfLife: ap.halfLife ?? null,
+                    pnlUsd: ap.pnlUsd ?? null,
+                    entrySpreadZ: ap.entrySpreadZ ?? null,
+                    deltaSpreadZ: ap.deltaSpreadZ ?? null,
+                    entryHalfLife: ap.entryHalfLife ?? null,
+                    deltaHalfLife: ap.deltaHalfLife ?? null,
+                    elapsedMs: ap.elapsedMs ?? null
+                });
             }
-            await fs.mkdir('sim_data', { recursive: true });
-            await fs.writeFile(statePath, JSON.stringify(state, null, 2));
         } catch { }
 
         const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -499,19 +466,27 @@ export class Orchestrator {
                     return;
                 }
 
-                // Persist pair baseline (entry metrics) for delta tracking
+                // Persist pair baseline (entry metrics) in SQL
                 try {
-                    const { promises: fs } = await import('fs');
+                    const { getDb } = await import('../db/sqlite.js');
+                    const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                    const repo = new SqliteRepo(await getDb());
                     const id = `${pair.long}|${pair.short}`;
-                    const statePath = 'sim_data/pairs_state.json';
-                    let state: Record<string, any> = {};
-                    try { const txt = await fs.readFile(statePath, 'utf8'); state = JSON.parse(txt); } catch { }
                     const entrySpreadZ = parsed?.pair?.spreadZ;
                     const entryHalfLife = parsed?.pair?.halfLife ?? null;
                     const nowTs = Date.now();
-                    state[id] = { entryTime: nowTs, entrySpreadZ, entryHalfLife, history: [{ ts: nowTs, spreadZ: entrySpreadZ, pnlUsd: 0, halfLife: entryHalfLife, entrySpreadZ, deltaSpreadZ: 0, entryHalfLife, deltaHalfLife: null, elapsedMs: 0 }] };
-                    await fs.mkdir('sim_data', { recursive: true });
-                    await fs.writeFile(statePath, JSON.stringify(state, null, 2));
+                    repo.upsertActivePair(id, pair.long, pair.short, { time: nowTs, spreadZ: entrySpreadZ ?? null, halfLife: entryHalfLife ?? null });
+                    repo.insertPairHistory(id, {
+                        ts: nowTs,
+                        spreadZ: entrySpreadZ ?? null,
+                        halfLife: entryHalfLife ?? null,
+                        pnlUsd: 0,
+                        entrySpreadZ: entrySpreadZ ?? null,
+                        deltaSpreadZ: 0,
+                        entryHalfLife: entryHalfLife ?? null,
+                        deltaHalfLife: null,
+                        elapsedMs: 0
+                    });
                 } catch { }
             } else if (parsed && parsed.mode === 'PAIR' && parsed.signal === 'REDUCE' && parsed.pair?.long && parsed.pair?.short) {
                 // Reduce position size by 50% for risk management
@@ -521,6 +496,10 @@ export class Orchestrator {
 
                     // Calculate realized PnL from partial close
                     let realized = 0;
+                    let longReduceAmt = 0;
+                    let shortReduceAmt = 0;
+                    let longPx: number | undefined;
+                    let shortPx: number | undefined;
                     let positionLeverage = 1;
                     try {
                         // Get current position sizes and reduce them
@@ -530,31 +509,40 @@ export class Orchestrator {
                         if (longPos && shortPos) {
                             positionLeverage = longPos.leverage || 1;
                             // Calculate realized PnL from reducing 50% of positions
-                            const longPx = (this.sim as any).currentPrice?.(pair.long);
-                            const shortPx = (this.sim as any).currentPrice?.(pair.short);
+                            longPx = (this.sim as any).currentPrice?.(pair.long);
+                            shortPx = (this.sim as any).currentPrice?.(pair.short);
 
                             if (longPx && shortPx) {
                                 const longDir = longPos.positionSide === 'LONG' ? 1 : -1;
                                 const shortDir = shortPos.positionSide === 'SHORT' ? -1 : 1;
 
-                                const longReduceAmt = longPos.positionAmt * reductionPct;
-                                const shortReduceAmt = Math.abs(shortPos.positionAmt) * reductionPct;
+                                longReduceAmt = Math.abs(longPos.positionAmt) * reductionPct;
+                                shortReduceAmt = Math.abs(shortPos.positionAmt) * reductionPct;
 
                                 const longRealized = (longPx - longPos.entryPrice) * longReduceAmt * longDir;
                                 const shortRealized = (shortPx - shortPos.entryPrice) * shortReduceAmt * shortDir;
 
                                 realized = longRealized + shortRealized;
 
-                                // Reduce position sizes
-                                longPos.positionAmt -= longReduceAmt;
-                                shortPos.positionAmt += shortReduceAmt; // SHORT positions are negative
+                                // Reduce position sizes (keep sign conventions)
+                                longPos.positionAmt = Math.max(0, longPos.positionAmt - longReduceAmt);
+                                shortPos.positionAmt = shortPos.positionAmt + shortReduceAmt; // short positions are negative, adding positive reduces magnitude
                             }
                         }
                     } catch (e) {
                         this.log('position reduction calculation error: %o', e);
                     }
 
-                    await ordersLedger.append('pair_reduce', { pair, reductionPct, realizedPnlUsd: realized, leverage: positionLeverage });
+                    await ordersLedger.append('pair_reduce', {
+                        pair,
+                        reductionPct,
+                        realizedPnlUsd: realized,
+                        leverage: positionLeverage,
+                        legs: [
+                            (typeof longPx === 'number' && longReduceAmt > 0) ? { symbol: pair.long, side: 'SELL', qty: longReduceAmt, price: longPx } : undefined,
+                            (typeof shortPx === 'number' && shortReduceAmt > 0) ? { symbol: pair.short, side: 'BUY', qty: shortReduceAmt, price: shortPx } : undefined
+                        ].filter(Boolean)
+                    });
                     this.log('REDUCE signal processed for pair %s/%s - positions reduced by 50%, realized PnL: $%s (leverage: %sx)', pair.long, pair.short, realized.toFixed(2), positionLeverage);
                 } catch (e) {
                     this.log('pair reduce error: %o', e);
@@ -570,47 +558,25 @@ export class Orchestrator {
                         const longClose = (this.sim as any).closePosition?.(pair.long);
                         const shortClose = (this.sim as any).closePosition?.(pair.short);
                         realized = (longClose?.realizedPnl ?? 0) + (shortClose?.realizedPnl ?? 0);
+                        // Log exit with leg details if available
+                        await ordersLedger.append('pair_exit', {
+                            pair,
+                            realizedPnlUsd: realized,
+                            legs: [
+                                longClose ? { symbol: pair.long, side: 'SELL', qty: longClose.exitQty, price: longClose.exitPrice } : undefined,
+                                shortClose ? { symbol: pair.short, side: 'BUY', qty: shortClose.exitQty, price: shortClose.exitPrice } : undefined
+                            ].filter(Boolean)
+                        });
                     } catch { /* ignore */ }
 
-                    // Retrieve complete pair metadata from pairs_state.json to avoid null values in exit logs
-                    let completePair = pair;
+                    // Close active pair in SQL
                     try {
-                        const { promises: fs } = await import('fs');
-                        const statePath = 'sim_data/pairs_state.json';
-                        const stateTxt = await fs.readFile(statePath, 'utf8');
-                        const state: Record<string, any> = JSON.parse(stateTxt);
+                        const { getDb } = await import('../db/sqlite.js');
+                        const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                        const repo = new SqliteRepo(await getDb());
                         const id = `${pair.long}|${pair.short}`;
-                        if (state[id]) {
-                            // Get the latest spread data from history for current stats
-                            const history = state[id].history || [];
-                            const latest = history[history.length - 1];
-                            completePair = {
-                                sector: state[id].sector || pair.sector,
-                                ecosystem: state[id].ecosystem || pair.ecosystem,
-                                assetType: state[id].assetType || pair.assetType,
-                                long: pair.long,
-                                short: pair.short,
-                                corr: state[id].corr || pair.corr,
-                                beta: state[id].beta || pair.beta,
-                                spreadZ: latest?.spreadZ || state[id].entrySpreadZ || pair.spreadZ,
-                                halfLife: latest?.halfLife || state[id].entryHalfLife || pair.halfLife
-                            };
-                        }
-                    } catch { /* ignore - fall back to parsed pair */ }
-
-                    await ordersLedger.append('pair_exit', { pair: completePair, realizedPnlUsd: realized });
-                    // Update pairs_state to mark closed and persist realized PnL
-                    try {
-                        const { promises: fs } = await import('fs');
-                        const statePath = 'sim_data/pairs_state.json';
-                        let state: Record<string, any> = {};
-                        try { const txt = await fs.readFile(statePath, 'utf8'); state = JSON.parse(txt); } catch { }
-                        const id = `${pair.long}|${pair.short}`;
-                        if (!state[id]) state[id] = {};
-                        state[id].closedAt = Date.now();
-                        state[id].realizedPnlUsd = realized;
-                        await fs.writeFile(statePath, JSON.stringify(state, null, 2));
-                    } catch { /* ignore */ }
+                        repo.closeActivePair(id, realized);
+                    } catch { }
                 } catch { /* ignore */ }
             }
         } catch (e) {

@@ -489,8 +489,8 @@
         ]
     },
     "HYPE": {
-        "sector": "Meme",
-        "ecosystem": "Solana",
+        "sector": "DeFi",
+        "ecosystem": "Hyperliquid",
         "type": "Utility"
     },
     "USD1": {

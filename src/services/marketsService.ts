@@ -13,17 +13,19 @@
  * - Data persistence to disk
  */
 
-import { promises as fs } from 'fs';
+// import { promises as fs } from 'fs';
 import { PublicClient } from '../http/publicClient.js';
 import { fetchConsolidatedMarkets } from '../lib/consolidateMarkets.js';
 
 export class MarketsService {
     constructor(private client: PublicClient) { }
 
-    async refreshAndSave(filePath: string): Promise<void> {
+    async refreshAndSave(_filePath: string): Promise<void> {
         const { markets } = await fetchConsolidatedMarkets(this.client);
-        await fs.mkdir('sim_data', { recursive: true });
-        await fs.writeFile(filePath, JSON.stringify({ asOf: Date.now(), markets }, null, 2));
+        const { getDb } = await import('../db/sqlite.js');
+        const { SqliteRepo } = await import('./sqliteRepo.js');
+        const repo = new SqliteRepo(await getDb());
+        repo.insertMarketsSnapshot(Date.now(), { markets });
     }
 }
 

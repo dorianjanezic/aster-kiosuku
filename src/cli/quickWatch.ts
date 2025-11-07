@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import createDebug from 'debug';
-import { JsonlLedger } from '../persistence/jsonlLedger.js';
+// import { JsonlLedger } from '../persistence/jsonlLedger.js';
+import { SqlEventLedger } from '../persistence/sqlEventLedger.js';
 import { SimulatedExchange } from '../sim/simulatedExchange.js';
 import { PriceMonitorService } from '../services/priceMonitorService.js';
 import { StateService } from '../services/stateService.js';
@@ -9,20 +10,20 @@ type OrderLine = { ts: number; type: string; data: any };
 
 const log = createDebug('agent:quickwatch');
 
-async function readOrders(path: string): Promise<OrderLine[]> {
+async function readOrdersFromSql(limit = 1000): Promise<OrderLine[]> {
     try {
-        const text = await fs.readFile(path, 'utf8');
-        const lines = text.split(/\r?\n/).filter(Boolean);
-        return lines.map((l) => JSON.parse(l));
+        const { getDb } = await import('../db/sqlite.js');
+        const db = await getDb();
+        const rows = db.prepare('SELECT ts, type, raw_json FROM orders WHERE type = ? ORDER BY ts ASC LIMIT ?').all('order', limit) as any[];
+        return rows.map(r => ({ ts: r.ts, type: 'order', data: JSON.parse(r.raw_json)?.data })) as any;
     } catch {
         return [];
     }
 }
 
 async function main(): Promise<void> {
-    const ordersPath = 'sim_data/orders.jsonl';
-    const ledger = new JsonlLedger('sim_data/cycles.jsonl');
-    const lines = await readOrders(ordersPath);
+    const ledger = new SqlEventLedger();
+    const lines = await readOrdersFromSql(5000);
     const filled = lines.filter((l) => l?.type === 'order' && l?.data?.status === 'FILLED');
 
     // Gather symbols
@@ -53,7 +54,7 @@ async function main(): Promise<void> {
     priceMon.start();
 
     // State service to compute equity and PnL
-    const state = new StateService(ordersPath, sim);
+    const state = new StateService('sim_data/orders.jsonl', sim);
 
     // Periodically sync mids and write cycle snapshot
     const sync = () => {

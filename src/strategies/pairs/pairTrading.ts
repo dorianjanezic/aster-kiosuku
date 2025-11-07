@@ -33,7 +33,8 @@ import {
     CorrelationResult
 } from '../../lib/stats.js';
 import { PublicClient } from '../../http/publicClient.js';
-import { JsonlLedger } from '../../persistence/jsonlLedger.js';
+// import { JsonlLedger } from '../../persistence/jsonlLedger.js';
+import { SqlEventLedger } from '../../persistence/sqlEventLedger.js';
 import { computeTechnicalsFromKlines } from '../../tech/indicators.js';
 import createDebug from 'debug';
 
@@ -143,9 +144,20 @@ export type PairCandidate = {
 
 export async function buildPairCandidates(marketsPath = 'sim_data/markets.json', limitPerGroup = 5, client?: PublicClient): Promise<{ pairs: PairCandidate[] }> {
     const log = createDebug('agent:pairs');
+    let data: any = {};
+    try {
     const text = await fs.readFile(marketsPath, 'utf8');
-    const data = JSON.parse(text);
-    const ledger = new JsonlLedger('sim_data/pairs_errors.jsonl');
+        data = JSON.parse(text);
+    } catch {
+        try {
+            const { getDb } = await import('../../db/sqlite.js');
+            const { SqliteRepo } = await import('../../services/sqliteRepo.js');
+            const repo = new SqliteRepo(await getDb());
+            const latest = repo.getLatestMarkets();
+            if (latest) data = latest;
+        } catch {}
+    }
+    const ledger = new SqlEventLedger();
     const all = (data.markets || []) as Market[];
     log('markets loaded: %d', all.length);
     const markets: Market[] = (all || []).filter((m: any) => {
@@ -157,8 +169,12 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
     });
     log('markets valid: %d', markets.length);
     const http = client ?? new PublicClient(process.env.ASTER_BASE_URL || 'https://fapi.asterdex.com', process.env.ASTER_BASE_PATH || '/fapi/v1');
-    async function generateForGroup(groupKey: string, items: Market[], tag: 'sector' | 'ecosystem' | 'assetType'): Promise<PairCandidate[]> {
-        const tradable = items.filter(i => {
+    const noFilters = ((process.env.PAIRS_NO_FILTERS || '').toLowerCase() === '1' || (process.env.PAIRS_NO_FILTERS || '').toLowerCase() === 'true');
+    const allowCrossCategory = ((process.env.PAIRS_ALLOW_CROSS_CATEGORY || '').toLowerCase() === '1' || (process.env.PAIRS_ALLOW_CROSS_CATEGORY || '').toLowerCase() === 'true');
+    const sideCandidates = Math.max(2, Number(process.env.PAIRS_SIDE_CANDIDATES || '10'));
+    const pairingMode = (process.env.PAIRS_PAIRING_MODE || 'extremes').toLowerCase();
+    async function generateForGroup(groupKey: string, items: Market[], tag: 'sector' | 'ecosystem' | 'assetType' | 'global'): Promise<PairCandidate[]> {
+        const tradable = noFilters ? items : items.filter(i => {
             const tier = i.categories?.computed?.liquidityTier;
             return (tier === 'T1' || tier === 'T2') && i.symbol.endsWith('USDT');
         });
@@ -216,47 +232,59 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
         const vol = tradable.map(t => t.categories?.metrics?.atrPct14 ?? 0);
         const fund = tradable.map(t => t.categories?.metrics?.fundingMean ?? 0);
         const qv = tradable.map(t => t.categories?.metrics?.quoteVolume ?? 0);
-        const liqZ = zScores(liq);
-        const volZ = zScores(vol);
-        const fundZ = zScores(fund);
-        const qvZ = zScores(qv);
-        const rsiZ = zScores(rsiValues);
+        // Compute z-scores then cap to reduce outlier influence
+        const cap = (arr: number[]) => arr.map(v => Math.max(-3, Math.min(3, v ?? 0)));
+        const liqZ = cap(zScores(liq));
+        const volZ = cap(zScores(vol));
+        const fundZ = cap(zScores(fund));
+        const qvZ = cap(zScores(qv));
+        const rsiZ = cap(zScores(rsiValues));
         const W1 = Number(process.env.PAIRS_W_LIQ || '0.4');
         const W2 = Number(process.env.PAIRS_W_VOL || '0.3');
         const W3 = Number(process.env.PAIRS_W_FUND || '0.2');
         const W4 = Number(process.env.PAIRS_W_QV || '0.1');
         const W5 = Number(process.env.PAIRS_W_RSI || '0.2');
         log('weights W1=%s W2=%s W3=%s W4=%s W5=%s minCorr=%s', W1, W2, W3, W4, W5, process.env.PAIRS_MIN_CORR || '0.6');
-        const comp = tradable.map((_, i) => (W1 * (liqZ[i] ?? 0)) + (W2 * (volZ[i] ?? 0)) + (W3 * (fundZ[i] ?? 0)) - (W4 * (qvZ[i] ?? 0)) - (W5 * (rsiZ[i] ?? 0)));
+        // Align signs: favor higher liquidity, volume, funding, RSI
+        const comp = tradable.map((_, i) => (W1 * (liqZ[i] ?? 0)) + (W2 * (volZ[i] ?? 0)) + (W3 * (fundZ[i] ?? 0)) + (W4 * (qvZ[i] ?? 0)) + (W5 * (rsiZ[i] ?? 0)));
         const ranked = tradable.map((t, i) => ({ t, s: comp[i], i, rsi: rsiValues[i] }))
             .sort((a, b) => (b.s ?? 0) - (a.s ?? 0));
-        const topRaw = ranked.slice(0, Math.min(10, ranked.length)); // Increased from 8 to 10 for more options
-        const bottomRaw = ranked.slice(-Math.min(10, ranked.length)).reverse();
+        const topRaw = ranked.slice(0, Math.min(sideCandidates, ranked.length));
+        const bottomRaw = ranked.slice(-Math.min(sideCandidates, ranked.length)).reverse();
 
-        // More reasonable RSI thresholds for pair trading (look for divergence, not extremes)
-        let top = topRaw.filter(r => (r.rsi ?? 50) >= 55); // Relaxed from > 70 to >= 55
-        let bottom = bottomRaw.filter(r => (r.rsi ?? 50) <= 45); // Relaxed from < 30 to <= 45
+        // Selection of candidate sides
+        // If filters are disabled, use all ranked candidates on both sides
+        let top = noFilters ? topRaw : topRaw.filter(r => (r.rsi ?? 50) >= 55);
+        let bottom = noFilters ? bottomRaw : bottomRaw.filter(r => (r.rsi ?? 50) <= 45);
 
-        // If RSI filtering is too restrictive, gradually relax the criteria
-        if (!top.length || !bottom.length) {
-            log('group %s[%s]: RSI gates restrictive (top=%d, bottom=%d). Relaxing criteria.', tag, groupKey, top.length, bottom.length);
-            top = topRaw.filter(r => (r.rsi ?? 50) >= 50); // Further relaxation
-            bottom = bottomRaw.filter(r => (r.rsi ?? 50) <= 50);
-        }
+        if (!noFilters) {
+            // If RSI filtering is too restrictive, gradually relax the criteria
+            if (!top.length || !bottom.length) {
+                log('group %s[%s]: RSI gates restrictive (top=%d, bottom=%d). Relaxing criteria.', tag, groupKey, top.length, bottom.length);
+                top = topRaw.filter(r => (r.rsi ?? 50) >= 50);
+                bottom = bottomRaw.filter(r => (r.rsi ?? 50) <= 50);
+            }
 
-        if (!top.length || !bottom.length) {
-            log('group %s[%s]: RSI gates still empty (top=%d, bottom=%d). Using score-only selection.', tag, groupKey, top.length, bottom.length);
-            top = topRaw;
-            bottom = bottomRaw;
+            if (!top.length || !bottom.length) {
+                log('group %s[%s]: RSI gates still empty (top=%d, bottom=%d). Using score-only selection.', tag, groupKey, top.length, bottom.length);
+                top = topRaw;
+                bottom = bottomRaw;
+            }
         }
 
         // Ensure we have at least one candidate from each side
         if (!top.length && topRaw.length) top = [topRaw[0]!];
         if (!bottom.length && bottomRaw.length) bottom = [bottomRaw[0]!];
         log('group %s[%s]: top=%d bottom=%d', tag, groupKey, top.length, bottom.length);
+        if (pairingMode !== 'extremes') {
+            log('group %s[%s]: pairingMode=%s', tag, groupKey, pairingMode);
+        }
 
         // Pre-compute correlations and betas for all candidate pairs to optimize performance
-        const candidateSymbols = [...new Set([...top.map(t => t.t.symbol), ...bottom.map(t => t.t.symbol)])];
+        const pool = (pairingMode === 'corr_first' || pairingMode === 'pool')
+            ? ranked.slice(0, Math.min(sideCandidates * 2, ranked.length))
+            : ([] as typeof ranked).concat(top, bottom);
+        const candidateSymbols = [...new Set(pool.map(t => t.t.symbol))];
         const symbolToIndex = new Map(candidateSymbols.map((s, i) => [s, i]));
         const returnsMatrix: number[][] = [];
 
@@ -280,8 +308,24 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
         const out: PairCandidate[] = [];
         const seen = new Set<string>();
         let considered = 0; let skippedCorr = 0; let produced = 0;
-        for (const lo of bottom) {
-            for (const hi of top) {
+
+        // Build concrete list of candidate pairs depending on strategy
+        const pairCombos: Array<{ lo: any; hi: any }> = [];
+        if (pairingMode === 'extremes') {
+            for (const lo of bottom) {
+                for (const hi of top) {
+                    pairCombos.push({ lo, hi });
+                }
+            }
+        } else {
+            for (let i = 0; i < pool.length; i++) {
+                for (let j = i + 1; j < pool.length; j++) {
+                    pairCombos.push({ lo: pool[i]!, hi: pool[j]! });
+                }
+            }
+        }
+
+        for (const { lo, hi } of pairCombos) {
                 if (lo.t.symbol === hi.t.symbol) continue;
                 const key = `${tag}:${groupKey}|${lo.t.symbol}|${hi.t.symbol}`;
                 if (seen.has(key)) continue;
@@ -330,19 +374,44 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                     const corrResult = correlationMap.get(`${idx1}-${idx2}`);
 
                     if (!corrResult || !corrResult.isValid) {
-                        void ledger.append('invalid_pair', { key, reason: 'correlation_calculation_failed' });
-                        continue;
+                        // Fallback: compute correlation/beta from aligned returns for this pair only
+                        try {
+                            const returnsA = logReturns(pricesA);
+                            const returnsB = logReturns(pricesB);
+                            const minLen = Math.min(returnsA.length, returnsB.length);
+                            if (minLen >= 10) {
+                                const rA = returnsA.slice(-minLen);
+                                const rB = returnsB.slice(-minLen);
+                                const fbCorr = pearson(rA, rB);
+                                const fbBeta = betaYOnX(rA, rB);
+                                if (Number.isFinite(fbCorr as number) && Number.isFinite(fbBeta as number)) {
+                                    corr = fbCorr as number;
+                                    beta = (fbBeta as number);
+                                } else {
+                                    void ledger.append('invalid_pair', { key, reason: 'correlation_fallback_failed' });
+                                    continue;
+                                }
+                            } else {
+                                void ledger.append('invalid_pair', { key, reason: 'correlation_insufficient_returns', lenA: returnsA.length, lenB: returnsB.length });
+                                continue;
+                            }
+                        } catch {
+                            void ledger.append('invalid_pair', { key, reason: 'correlation_calculation_failed' });
+                            continue;
+                        }
+                    } else {
+                        corr = corrResult.correlation;
+                        // For beta, we want beta of long (lo) vs short (hi), so if we swapped indices, invert beta
+                        beta = idxA < idxB ? corrResult.beta : (1 / corrResult.beta);
                     }
 
-                    corr = corrResult.correlation;
-                    // For beta, we want beta of long (lo) vs short (hi), so if we swapped indices, invert beta
-                    beta = idxA < idxB ? corrResult.beta : (1 / corrResult.beta);
 
-
-                    if ((corr ?? 0) < Number(process.env.PAIRS_MIN_CORR || '0.7')) {
-                        skippedCorr++;
-                        void ledger.append('invalid_pair', { key, reason: 'low_correlation', corr });
-                        continue;
+                    if (!noFilters) {
+                        if ((corr ?? 0) < Number(process.env.PAIRS_MIN_CORR || '0.7')) {
+                            skippedCorr++;
+                            void ledger.append('invalid_pair', { key, reason: 'low_correlation', corr });
+                            continue;
+                        }
                     }
 
                     // Use log prices for cointegration analysis
@@ -418,37 +487,38 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                         continue;
                     }
                 }
-                // Enforce strong mean-reversion filters with relaxed fallbacks
+                // Enforce strong mean-reversion filters unless disabled
                 const strictHalf = Number(process.env.PAIRS_MAX_HALFLIFE_DAYS || '20');
                 const fallbackHalf = Number(process.env.PAIRS_FALLBACK_MAX_HALFLIFE_DAYS || '40');
                 const strictSpread = Number(process.env.PAIRS_MIN_SPREADZ || '0.8');
                 const fallbackSpread = Number(process.env.PAIRS_FALLBACK_MIN_SPREADZ || '0.5');
 
-                // Check for basic mean-reversion using simplified ADF test
-                if (stationary === false || adfT == null || adfT > -1.645) {
-                    void ledger.append('invalid_pair', { key, reason: 'non_stationary', adfT, adfP });
-                    continue;
-                }
                 let relaxed = false;
-                // Check half-life for reasonable mean-reversion speed
-                if (halfLife != null && halfLife > strictHalf) { // Very slow mean reversion
-                    const hasFastHalfLife = out.some(p => (p.cointegration?.halfLife ?? Infinity) <= strictHalf);
-                    if (halfLife <= fallbackHalf && !hasFastHalfLife) { // Allow up to fallback if no faster pairs exist
-                        relaxed = true;
-                    } else {
-                        void ledger.append('invalid_pair', { key, reason: 'halflife_exceeds', halfLife });
+                if (!noFilters) {
+                    // Check for basic mean-reversion using simplified ADF test
+                    if (stationary === false || adfT == null || adfT > -1.645) {
+                        void ledger.append('invalid_pair', { key, reason: 'non_stationary', adfT, adfP });
                         continue;
                     }
-                }
-                // Check spread Z-score for mean-reversion opportunity
-                // Lower threshold since we now calculate spreadZ for shorter series
-                if (Math.abs(spreadZ ?? 0) < strictSpread) { // Need meaningful divergence
-                    const hasStrictZ = out.some(p => Math.abs(p.spreadZ ?? 0) >= strictSpread);
-                    if (Math.abs(spreadZ ?? 0) >= fallbackSpread && !hasStrictZ) { // Fallback threshold
-                        relaxed = true;
-                    } else {
-                        void ledger.append('invalid_pair', { key, reason: 'spreadz_low', spreadZ });
-                        continue;
+                    // Check half-life for reasonable mean-reversion speed
+                    if (halfLife != null && halfLife > strictHalf) {
+                        const hasFastHalfLife = out.some(p => (p.cointegration?.halfLife ?? Infinity) <= strictHalf);
+                        if (halfLife <= fallbackHalf && !hasFastHalfLife) {
+                            relaxed = true;
+                        } else {
+                            void ledger.append('invalid_pair', { key, reason: 'halflife_exceeds', halfLife });
+                            continue;
+                        }
+                    }
+                    // Check spread Z-score for mean-reversion opportunity
+                    if (Math.abs(spreadZ ?? 0) < strictSpread) {
+                        const hasStrictZ = out.some(p => Math.abs(p.spreadZ ?? 0) >= strictSpread);
+                        if (Math.abs(spreadZ ?? 0) >= fallbackSpread && !hasStrictZ) {
+                            relaxed = true;
+                        } else {
+                            void ledger.append('invalid_pair', { key, reason: 'spreadz_low', spreadZ });
+                            continue;
+                        }
                     }
                 }
                 // Calculate enhanced technical indicators
@@ -473,6 +543,11 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                     continue;
                 }
 
+                // Derive combined sector label when legs come from different categories
+                const secLo = (lo.t as any)?.categories?.sector as (string | undefined);
+                const secHi = (hi.t as any)?.categories?.sector as (string | undefined);
+                const combinedSector = (secLo && secHi) ? (secLo === secHi ? secLo : `${secLo}/${secHi}`) : (secLo || secHi);
+
                 const base: Partial<PairCandidate> = {
                     long: lo.t.symbol,
                     short: hi.t.symbol,
@@ -484,7 +559,12 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                     fundingNet,
                     technicals: enhancedTech, // Add enhanced technical indicators
                     scores: { long: ls, short: hs, composite },
-                    notes: ['enhanced-scores', `corr:${corr?.toFixed(3)}`, `beta:${beta?.toFixed(3)}`, `spreadZ:${spreadZ?.toFixed(2)}`, `adfT:${adfT?.toFixed(2)}`, `rsiDiv:${enhancedTech.rsiDivergence?.toFixed(2)}`, `regime:${enhancedTech.regimeScore?.toFixed(2)}`]
+                    notes: ['enhanced-scores', `corr:${corr?.toFixed(3)}`, `beta:${beta?.toFixed(3)}`, `spreadZ:${spreadZ?.toFixed(2)}`, `adfT:${adfT?.toFixed(2)}`, `rsiDiv:${enhancedTech.rsiDivergence?.toFixed(2)}`, `regime:${enhancedTech.regimeScore?.toFixed(2)}`],
+                    sector: combinedSector as any,
+                    // Provide leg-level categories to consumers that want to render both
+                    // (frontends use passthrough schemas so extra fields are fine)
+                    longSector: secLo as any,
+                    shortSector: secHi as any
                 } as any;
                 if (relaxed) (base as any).notes.push('relaxed-filter');
                 if (tag === 'sector') (base as any).sector = groupKey;
@@ -495,8 +575,6 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                 if (out.length >= limit) break;
                 considered++;
             }
-            if (out.length >= limit) break;
-        }
         log('group %s[%s]: considered=%d produced=%d skippedCorr=%d limit=%d', tag, groupKey, considered, produced, skippedCorr, limit);
         return out;
     }
@@ -520,6 +598,10 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
     for (const [k, items] of bySector.entries()) pairs.push(...await generateForGroup(k, items, 'sector'));
     for (const [k, items] of byEco.entries()) pairs.push(...await generateForGroup(k, items, 'ecosystem'));
     for (const [k, items] of byType.entries()) pairs.push(...await generateForGroup(k, items, 'assetType'));
+    // Optional global group to allow cross-category pair building
+    if (allowCrossCategory) {
+        pairs.push(...await generateForGroup('ALL', markets, 'global'));
+    }
 
     // De-duplicate across groups by long/short combo (keep first occurrence)
     const uniq: PairCandidate[] = [];
@@ -532,8 +614,7 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
     }
 
     log('pairs before dedupe=%d after=%d', pairs.length, uniq.length);
-    await fs.writeFile('sim_data/pairs_raw.json', JSON.stringify({ asOf: Date.now(), pairs }, null, 2));
     return { pairs: uniq };
 }
 
-
+export {};

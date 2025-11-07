@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { StatsCard } from '@/components/stats-card'
+import { MetricHeader } from '@/components/MetricHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -167,12 +168,34 @@ export default async function DashboardPage() {
         fetchPortfolio()
     ])
 
-    const sortedEvents = [...events].sort((a, b) => b.ts - a.ts)
-    const recentEvents = sortedEvents.slice(0, 5)
+    const sortedEvents = [...events]
+        .filter((e) => e.type === 'user' || e.type === 'decision')
+        .sort((a, b) => b.ts - a.ts)
+    // Deduplicate assistant messages that arrive as both assistant_raw and decision in the same second
+    const seenDecisionBucket = new Set<number>()
+    const deduped = [] as typeof sortedEvents
+    for (const e of sortedEvents) {
+        if (e.type === 'decision') {
+            const bucket = Math.floor(e.ts / 1000)
+            if (seenDecisionBucket.has(bucket)) continue
+            seenDecisionBucket.add(bucket)
+        }
+        deduped.push(e)
+        if (deduped.length >= 10) break
+    }
+    const recentEvents = deduped.slice(0, 5)
 
     // Calculate some derived metrics
     const totalPairs = pairs.length
-    const overviewPairs = [...pairs].sort((a, b) => (b.scores?.composite ?? -Infinity) - (a.scores?.composite ?? -Infinity))
+    const overviewPairs = [...pairs]
+        .sort((a, b) => {
+            const az = typeof a.spreadZ === 'number' ? Math.abs(a.spreadZ) : -Infinity
+            const bz = typeof b.spreadZ === 'number' ? Math.abs(b.spreadZ) : -Infinity
+            if (bz !== az) return bz - az
+            const ac = a.scores?.composite ?? -Infinity
+            const bc = b.scores?.composite ?? -Infinity
+            return bc - ac
+        })
     const activePositions = positions.filter(p => Math.abs(p.netQty) > 0.0001).length
     const profitablePairs = pairPerformances.filter(p => p.upnl > 0).length
     const totalExposure = summary.totalNotional
@@ -286,50 +309,62 @@ export default async function DashboardPage() {
                             <thead>
                                 <tr className="border-b">
                                     <th className="px-4 py-2 text-left font-medium">Pair</th>
-                                    <th className="px-4 py-2 text-right font-medium">Correlation</th>
-                                    <th className="px-4 py-2 text-right font-medium">Spread Z</th>
-                                    <th className="px-4 py-2 text-right font-medium">Half-Life</th>
-                                    <th className="px-4 py-2 text-right font-medium">Score</th>
-                                    <th className="px-4 py-2 text-left font-medium">Sector</th>
+                                    <th className="px-4 py-2 text-right font-medium"><MetricHeader align="right" label="Correlation" tip="Pearson correlation of leg returns (higher = tighter co-movement)" /></th>
+                                    <th className="px-4 py-2 text-right font-medium"><MetricHeader align="right" label="Spread Z" tip="Z-score of the cointegrated spread (magnitude shows current divergence)" /></th>
+                                    <th className="px-4 py-2 text-right font-medium"><MetricHeader align="right" label="Half-Life" tip="Estimated mean-reversion half-life of the spread in periods (lower = faster)" /></th>
+                                    <th className="px-4 py-2 text-right font-medium"><MetricHeader align="right" label="Score" tip="Composite ranking combining correlation, divergence, half-life, stationarity and technicals" /></th>
+                                    <th className="px-4 py-2 text-left font-medium"><MetricHeader label="Sector" tip="Primary sector(s) of the pair; mixed shows A/B when legs differ" /></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {overviewPairs.slice(0, 10).map((p) => (
-                                    <tr key={`${p.long}|${p.short}`} className="border-b border-border/50 hover:bg-muted/50">
-                                        <td className="px-4 py-3 font-medium">
-                                            <div className="flex items-center gap-2">
-                                                <span>{p.long} / {p.short}</span>
-                                                {typeof p.spreadZ === 'number' && Math.abs(p.spreadZ) > 2 && (
-                                                    <Badge variant="warning" className="text-xs">
-                                                        <AlertCircle className="h-3 w-3 mr-1" />
-                                                        High Z
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            {typeof p.corr === 'number' ? (
-                                                <span className={p.corr > 0.7 ? "text-green-600 font-medium" : ""}>
-                                                    {p.corr.toFixed(3)}
-                                                </span>
-                                            ) : '-'}
-                                        </td>
-                                        <td className="px-4 py-3 text-right">{typeof p.spreadZ === 'number' ? p.spreadZ.toFixed(3) : '-'}</td>
-                                        <td className="px-4 py-3 text-right">{typeof p.cointegration?.halfLife === 'number' ? `${p.cointegration.halfLife.toFixed(1)}p` : '-'}</td>
-                                        <td className="px-4 py-3 text-right">
-                                            {typeof p.scores?.composite === 'number' ? (
-                                                <span className={p.scores.composite > 0 ? "text-green-600" : "text-red-600"}>
-                                                    {p.scores.composite.toFixed(3)}
-                                                </span>
-                                            ) : '-'}
-                                        </td>
-                                        <td className="px-4 py-3">
+                                {overviewPairs.slice(0, 10).map((p) => {
+                                    const swapped = typeof p.spreadZ === 'number' && p.spreadZ > 0
+                                    const dispLong = swapped ? p.short : p.long
+                                    const dispShort = swapped ? p.long : p.short
+                                    const displayedZ = typeof p.spreadZ === 'number' ? Math.abs(swapped ? -p.spreadZ : p.spreadZ) : undefined
+                                    const displayedSector = (() => {
+                                        if (!p.sector) return 'Unknown'
+                                        const parts = String(p.sector).split('/')
+                                        if (parts.length !== 2) return p.sector
+                                        return swapped ? `${parts[1]}/${parts[0]}` : p.sector
+                                    })()
+                                    return (
+                                        <tr key={`${p.long}|${p.short}`} className="border-b border-border/50 hover:bg-muted/50">
+                                            <td className="px-4 py-3 font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{dispLong} / {dispShort}</span>
+                                                    {typeof p.spreadZ === 'number' && Math.abs(p.spreadZ) > 2 && (
+                                                        <Badge variant="warning" className="text-xs">
+                                                            <AlertCircle className="h-3 w-3 mr-1" />
+                                                            High Z
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                {typeof p.corr === 'number' ? (
+                                                    <span className={p.corr > 0.7 ? "text-green-600 font-medium" : ""}>
+                                                        {p.corr.toFixed(3)}
+                                                    </span>
+                                                ) : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-right">{typeof displayedZ === 'number' ? displayedZ.toFixed(3) : '-'}</td>
+                                            <td className="px-4 py-3 text-right">{typeof p.cointegration?.halfLife === 'number' ? `${p.cointegration.halfLife.toFixed(1)}p` : '-'}</td>
+                                            <td className="px-4 py-3 text-right">
+                                                {typeof p.scores?.composite === 'number' ? (
+                                                    <span className={p.scores.composite > 0 ? "text-green-600" : "text-red-600"}>
+                                                        {p.scores.composite.toFixed(3)}
+                                                    </span>
+                                                ) : '-'}
+                                            </td>
+                                        <td className="px-4 py-3 flex justify-end">
                                             <Badge variant="outline" className="text-xs">
-                                                {p.sector ?? 'Unknown'}
+                                                {displayedSector}
                                             </Badge>
                                         </td>
-                                    </tr>
-                                ))}
+                                        </tr>
+                                    )
+                                })}
                             </tbody>
                         </table>
                     </div>

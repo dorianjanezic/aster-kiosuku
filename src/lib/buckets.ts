@@ -8,8 +8,19 @@ export async function updateMarketsBuckets(client: PublicClient, marketsPath = '
     const interval = opts?.interval || '15m';
     const limit = opts?.limit || 200;
     const conc = Math.max(1, Math.min(10, opts?.concurrency || 5));
+    let data = { markets: [] as MarketRec[] } as { markets: MarketRec[] };
+    try {
     const raw = await fs.readFile(marketsPath, 'utf8');
-    const data = JSON.parse(raw) as { markets: MarketRec[] };
+        data = JSON.parse(raw) as { markets: MarketRec[] };
+    } catch {
+        try {
+            const { getDb } = await import('../db/sqlite.js');
+            const { SqliteRepo } = await import('../services/sqliteRepo.js');
+            const repo = new SqliteRepo(await getDb());
+            const latest: any = repo.getLatestMarkets();
+            if (latest && Array.isArray(latest.markets)) data = { markets: latest.markets } as any;
+        } catch {}
+    }
     const markets = (data.markets || []).filter(Boolean);
 
     // Hydrate missing categories from local maps
@@ -150,8 +161,13 @@ export async function updateMarketsBuckets(client: PublicClient, marketsPath = '
         const sector = m?.categories?.sector;
         return sector !== 'Equity' && sector !== 'ETF';
     });
-    const result = { ...data, markets: filtered, bucketsAsOf: Date.now() };
-    await fs.writeFile(marketsPath, JSON.stringify(result, null, 2));
+    const result = { ...data, markets: filtered, bucketsAsOf: Date.now() } as any;
+    try {
+        const { getDb } = await import('../db/sqlite.js');
+        const { SqliteRepo } = await import('../services/sqliteRepo.js');
+        const repo = new SqliteRepo(await getDb());
+        repo.insertMarketsSnapshot(result.bucketsAsOf, result);
+    } catch {}
 }
 
 

@@ -9,7 +9,7 @@
  * - System lifecycle management
  */
 
-import { loadConfig } from './config/index.js';
+import { loadConfig, applyConfigToEnv } from './config/index.js';
 import { PublicClient } from './http/publicClient.js';
 import { MarketsService } from './services/marketsService.js';
 import { SchedulerLoop } from './scheduler/loop.js';
@@ -21,6 +21,8 @@ async function start() {
 
     // Load application configuration (API keys, intervals, URLs)
     const cfg = loadConfig();
+    // Apply default pair env so downstream modules reading process.env get consistent values
+    applyConfigToEnv(cfg);
 
     // Initialize HTTP client for exchange communication
     const client = new PublicClient(cfg.asterBaseUrl, cfg.asterBasePath);

@@ -35,6 +35,16 @@ async function resetData() {
         }
     }
 
+    // Remove SQLite database files to start fresh each run
+    const dbFiles = ['state.db', 'state.db-wal', 'state.db-shm'];
+    for (const dbFile of dbFiles) {
+        const p = path.join(simDataDir, dbFile);
+        try {
+            await fs.unlink(p);
+            console.log(`✓ Removed ${dbFile}`);
+        } catch {}
+    }
+
     console.log('Data reset complete. Ready for fresh simulation!');
 }
 

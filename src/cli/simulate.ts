@@ -13,14 +13,15 @@
  */
 
 import { SimulatedExchange } from '../sim/simulatedExchange.js';
-import { JsonlLedger } from '../persistence/jsonlLedger.js';
+// import { JsonlLedger } from '../persistence/jsonlLedger.js';
+import { SqlEventLedger } from '../persistence/sqlEventLedger.js';
 
 async function main() {
     const sim = new SimulatedExchange([
         { symbol: 'BTCUSDT', price: 65000 },
         { symbol: 'ETHUSDT', price: 3200 }
     ]);
-    const ledger = new JsonlLedger('sim_data/orders.jsonl');
+    const ledger = new SqlEventLedger();
 
     const order1 = sim.placeOrder({
         symbol: 'BTCUSDT',

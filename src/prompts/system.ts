@@ -27,13 +27,13 @@ export function getSystemPrompt(): string {
         '## Input Data\n\n' +
         '- Portfolio: balanceUsd, equityUsd, availableMarginUsd, openPositionsCount\n' +
         '- Open Positions: symbol, direction, entryPrice, qty, unrealizedPnl, leverage\n' +
-        '- State JSON: activePairs with pnlUsd, spreadZ, halfLifeHours, entrySpreadZ, deltaSpreadZ, entryHalfLife, deltaHalfLife, convergencePct, exitSignals\n' +
+        '- State JSON: activePairs with pnlUsd, spreadZ, halfLifeHours (hours), entrySpreadZ, deltaSpreadZ, entryHalfLifeHours (hours), deltaHalfLife, convergencePct, exitSignals\n' +
         '- Pairs: Enhanced candidates with statistical metrics (corr, beta, spreadZ, adfT, halfLife, fundingNet) + technical indicators (rsiDivergence, volumeConfirmation, regimeScore, adxTrend, volumeTrend)\n\n' +
         '## Core Rules\n\n' +
         '1. **Statistical Thresholds**:\n' +
         '   - Correlation ≥ 0.7\n' +
         '   - ADF t-statistic ≤ -1.645 (90% significance)\n' +
-        '   - Half-life ≤ 40 periods\n' +
+        '   - Half-life ≤ 40 periods (pairs list shows periods; state uses hours)\n' +
         '   - |Spread Z-score| ≥ 0.8\n\n' +
         '2. **Position Limits**:\n' +
         '   - Maximum 10 pairs (20 positions) concurrently\n' +
@@ -98,7 +98,8 @@ export function getSystemPrompt(): string {
         '3. **Technical Analysis**: Evaluate RSI divergence, volume confirmation, and market regime\n' +
         '4. **Sentiment Research**: Search for social sentiment on top pair candidates and active pairs\n' +
         '5. **New Pair Selection**: Choose top candidate meeting ALL criteria, factoring in technical + sentiment analysis\n' +
-        '6. **Action**: ENTER new pair, EXIT active pair, REDUCE risk, or NONE\n\n' +
+        '6. **Action**: ENTER new pair, EXIT active pair, REDUCE risk, or NONE\n' +
+        '7. **Guard**: If no candidate meets ALL thresholds, return signal "NONE" with rationale.\n\n' +
         '## Exit Triggers\n\n' +
         '- Profit Target: |spreadZ| ≤ 0.5 (lock in profits when spread normalizes)\n' +
         '- Time Stop: elapsedHours ≥ 2×halfLifeHours (prevent capital tie-up)\n' +
@@ -113,7 +114,7 @@ export function getSystemPrompt(): string {
         '  "pair"?: {"long": string, "short": string, "corr"?: number, "beta"?: number, "spreadZ"?: number, "adfT"?: number, "halfLife"?: number, "fundingNet"?: number},\n' +
         '  "signal": "ENTER" | "EXIT" | "REDUCE" | "NONE",\n' +
         '  "sizing"?: {"longSizeUsd": number, "shortSizeUsd": number, "leverage": number},\n' +
-        '  "risk"?: {"long": {"stopLoss": number, "takeProfit": number, "leverage": number}, "short": {"stopLoss": number, "takeProfit": number, "leverage": number}},\n' +
+        '  "risk"?: {"profitTargetZ": number, "reduceAtPnlUsd": number, "stopLossPnlUsd": number, "timeStopHours": number, "maxDurationHours"?: number},\n' +
         '  "rationale": string[]\n' +
         '}'
     );

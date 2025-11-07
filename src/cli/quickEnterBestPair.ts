@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import createDebug from 'debug';
-import { JsonlLedger } from '../persistence/jsonlLedger.js';
+// import { JsonlLedger } from '../persistence/jsonlLedger.js';
+import { SqlEventLedger } from '../persistence/sqlEventLedger.js';
 import { SimulatedExchange } from '../sim/simulatedExchange.js';
 import { PriceMonitorService } from '../services/priceMonitorService.js';
 
@@ -38,9 +39,17 @@ async function waitForPrices(pm: PriceMonitorService, symbols: string[], timeout
 }
 
 async function main(): Promise<void> {
-    const text = await fs.readFile('sim_data/pairs.json', 'utf8');
-    const data = JSON.parse(text);
-    const pairs: Pair[] = Array.isArray(data?.pairs) ? data.pairs : [];
+    let pairs: Pair[] = [];
+    try {
+        const { getDb } = await import('../db/sqlite.js');
+        const db = await getDb();
+        const row: any = db.prepare('SELECT data_json FROM pairs_snapshot ORDER BY as_of DESC LIMIT 1').get();
+        if (row?.data_json) {
+            const parsed = JSON.parse(row.data_json);
+            pairs = Array.isArray(parsed?.pairs) ? parsed.pairs : [];
+        }
+    } catch {}
+    if (!pairs.length) throw new Error('no pairs available in sqlite pairs_snapshot');
     if (!pairs.length) throw new Error('no pairs available in sim_data/pairs.json');
 
     const strictPairs = pairs.filter(p => (p.cointegration?.stationary === true) && ((p.cointegration?.halfLife ?? Infinity) <= 3) && Math.abs(p.spreadZ ?? 0) >= 1.1);
@@ -66,7 +75,7 @@ async function main(): Promise<void> {
         { symbol: longSym, price: 1 },
         { symbol: shortSym, price: 1 }
     ] as any);
-    const ledger = new JsonlLedger('sim_data/orders.jsonl');
+    const ledger = new SqlEventLedger();
 
     const prices = await waitForPrices(priceMon, [longSym, shortSym], Number(process.env.QUICK_PRICE_TIMEOUT || '15000'));
     const longPx = prices[longSym];
