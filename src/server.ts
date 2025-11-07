@@ -125,7 +125,7 @@ export function startHttpServer(portFromEnv?: number) {
             const startingBalance = Number(process.env.PORTFOLIO_BASE_BALANCE || 10000);
             const base = (typeof account?.balanceUsd === 'number') ? account.balanceUsd : startingBalance;
             const equity = base + totalUpnl;
-            res.json({ summary: { baseBalance: startingBalance, totalNotional, totalUpnl, equity }, positions, pairs: [] });
+            res.json({ summary: { baseBalance: startingBalance, balance: base, totalNotional, totalUpnl, equity }, positions, pairs: [] });
         } catch {
             res.status(500).json({ error: 'Failed to compute portfolio' });
         }

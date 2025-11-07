@@ -3,7 +3,7 @@ import { z } from 'zod'
 const PositionSchema = z.object({ symbol: z.string(), netQty: z.number(), avgEntry: z.number().nullable(), mid: z.number().nullable(), notional: z.number().nullable(), upnl: z.number().nullable() }).passthrough()
 const PairPerfSchema = z.object({ key: z.string(), long: z.string(), short: z.string(), upnl: z.number(), notionalEntry: z.number(), percent: z.number() }).passthrough()
 const PortfolioResponseSchema = z.object({
-    summary: z.object({ baseBalance: z.number(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }),
+    summary: z.object({ baseBalance: z.number(), balance: z.number().optional(), totalNotional: z.number(), totalUpnl: z.number(), equity: z.number() }),
     positions: z.array(PositionSchema),
     pairs: z.array(PairPerfSchema)
 }).passthrough()
@@ -65,7 +65,7 @@ export default async function PortfolioPage() {
         <main>
             <h2 className="mb-3 text-base font-semibold">Portfolio</h2>
             <div className="mb-3 grid grid-cols-2 gap-3 text-sm text-muted-foreground md:grid-cols-4">
-                <div>Balance: ${summary.baseBalance.toFixed(2)}</div>
+                <div>Balance: ${Number((summary as any).balance ?? summary.baseBalance).toFixed(2)}</div>
                 <div>Equity: ${summary.equity.toFixed(2)}</div>
                 <div>uPNL: ${summary.totalUpnl.toFixed(2)}</div>
                 <div>Exposure: ${summary.totalNotional.toFixed(2)}</div>
