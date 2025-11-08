@@ -62,6 +62,15 @@ INSERT OR REPLACE INTO pairs_snapshot (as_of, data_json) VALUES (?, ?)
         stmt.run(asOf, JSON.stringify(data));
     }
 
+    addRealizedToActivePair(pairKey: string, deltaRealized: number): void {
+        const stmt = this.db.prepare(`
+UPDATE active_pairs
+SET realized_pnl_usd = COALESCE(realized_pnl_usd, 0) + COALESCE(?, 0)
+WHERE pair_key = ? AND (closed_at IS NULL)
+`);
+        stmt.run(deltaRealized ?? 0, pairKey);
+    }
+
     insertPairHistory(pairKey: string, row: {
         ts: number;
         spreadZ?: number | null;

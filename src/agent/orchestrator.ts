@@ -54,6 +54,21 @@ export class Orchestrator {
             leverage: p.leverage
         }));
         const account = await handlers.get_account_state();
+        // Refresh unrealized PnL for positions using fresh mids
+        try {
+            const symbols = Array.from(new Set(positions.map(p => p.symbol)));
+            const priceMap = new Map<string, number>();
+            await Promise.all(symbols.map(async (s) => {
+                try { const t = await this.client.getTicker(s); priceMap.set(s, t.price); } catch { }
+            }));
+            for (const p of positions) {
+                const mid = priceMap.get(p.symbol);
+                if (typeof mid === 'number' && typeof p.entryPrice === 'number') {
+                    const dir = p.direction === 'LONG' ? 1 : -1;
+                    p.unrealizedPnl = (mid - p.entryPrice) * p.qty; // qty already signed by direction above
+                }
+            }
+        } catch { }
         // recent orders (last 10 min)
         const stateSvc = new StateService('sim_data/orders.jsonl', this.sim);
         const recentOrders = await stateSvc.getRecentOrders(100);
@@ -172,9 +187,30 @@ export class Orchestrator {
 
                     if (processedPairs.has(pairId)) continue;
 
-                    // Check if we have baseline data for this pair
-                    const baseline = pairBaselines[pairId];
-                    if (!baseline) continue;
+                    // Check if we have baseline data for this pair; if missing, bootstrap baseline
+                    let baseline = pairBaselines[pairId];
+                    if (!baseline) {
+                        try {
+                            const { getDb } = await import('../db/sqlite.js');
+                            const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                            const repo = new SqliteRepo(await getDb());
+                            const nowTs = Date.now();
+                            // Ensure we have some current stats for entry fields
+                            let stats = pairStatsMap.get(pairId);
+                            if (!stats) {
+                                const snap = repo.getLatestPairStatsFromSnapshot(longSymbol, shortSymbol);
+                                if (snap) stats = { spreadZ: (snap as any).spreadZ, halfLife: (snap as any).halfLife } as any;
+                            }
+                            repo.upsertActivePair(pairId, longSymbol, shortSymbol, {
+                                time: nowTs,
+                                spreadZ: (stats as any)?.spreadZ ?? null,
+                                halfLife: (stats as any)?.halfLife ?? null
+                            });
+                            pairBaselines[pairId] = { entryTime: nowTs, entrySpreadZ: (stats as any)?.spreadZ ?? undefined, entryHalfLife: (stats as any)?.halfLife ?? null } as any;
+                            baseline = pairBaselines[pairId];
+                        } catch { /* if bootstrap fails, skip pair this cycle */ }
+                        if (!baseline) continue;
+                    }
 
                     // Mark as processed
                     processedPairs.add(pairId);
@@ -603,6 +639,14 @@ export class Orchestrator {
                             (typeof shortPx === 'number' && shortReduceAmt > 0) ? { symbol: pair.short, side: 'BUY', qty: shortReduceAmt, price: shortPx } : undefined
                         ].filter(Boolean)
                     });
+                    // Accumulate realized into active_pairs
+                    try {
+                        const { getDb } = await import('../db/sqlite.js');
+                        const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                        const repo = new SqliteRepo(await getDb());
+                        const id = `${pair.long}|${pair.short}`;
+                        repo.addRealizedToActivePair(id, realized);
+                    } catch { }
                     this.log('REDUCE signal processed for pair %s/%s - positions reduced by 50%, realized PnL: $%s (leverage: %sx)', pair.long, pair.short, realized.toFixed(2), positionLeverage);
                 } catch (e) {
                     this.log('pair reduce error: %o', e);
