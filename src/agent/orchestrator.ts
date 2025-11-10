@@ -348,7 +348,16 @@ export class Orchestrator {
             return bc - ac;
         });
 
-        const eligible = sortedPairs.filter(p => !usedSymbols.has(p.long) && !usedSymbols.has(p.short) && !recentExitPairs.has(`${p.long}|${p.short}`));
+        const applyCooldown = positions.length > 0; // if no positions, ignore cooldown to surface candidates
+        let eligible = sortedPairs.filter(p =>
+            !usedSymbols.has(p.long) &&
+            !usedSymbols.has(p.short) &&
+            (applyCooldown ? !recentExitPairs.has(`${p.long}|${p.short}`) : true)
+        );
+        // Fallback: if nothing survives filters, use the sorted list to ensure the agent sees opportunities
+        if (eligible.length === 0) {
+            eligible = sortedPairs;
+        }
         const windowSize = Math.max(5, Number(process.env.PROMPT_PAIRS_WINDOW_SIZE || '12'));
         const cycleMs = Number(process.env.ROTATE_CYCLE_MS || String(5 * 60 * 1000));
         const rotationIdx = Math.floor(Date.now() / cycleMs);
@@ -382,6 +391,10 @@ export class Orchestrator {
                 { type: "x" } // Focus on X/Twitter for sentiment, skip news/web to reduce API calls
             ]
         };
+        try {
+            await this.ledger.append('search_invoked', { enabled: shouldSearch, params: searchParameters });
+            this.log('search enabled=%s params=%o', shouldSearch, searchParameters);
+        } catch { }
 
         let assistantText: string | undefined;
         try {
@@ -390,6 +403,9 @@ export class Orchestrator {
                 searchParameters
             } as any);
             assistantText = response.assistantText;
+            try {
+                await this.ledger.append('search_completed', { enabled: shouldSearch });
+            } catch { }
         } catch (e) {
             this.log('LLM chat failed: %o', e);
             await this.ledger.append('llm_error', { round: 0, error: String(e) });
