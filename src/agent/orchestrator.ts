@@ -241,8 +241,33 @@ export class Orchestrator {
                 const elapsedMs = (baseline && typeof baseline.entryTime === 'number')
                     ? (Date.now() - baseline.entryTime)
                     : undefined;
-                const convergenceProgress = (deltaSpreadZ != null && entrySpreadZ != null) ?
-                    Math.abs(deltaSpreadZ) / Math.abs(entrySpreadZ) : null;
+                // Convergence from entry magnitude toward 0 (0..1), never rewards moving away
+                let convergenceProgress: number | null = null;
+                // Progress toward target band (e.g., |Z| <= 0.5)
+                let convergenceToTargetPct: number | null = null;
+                let remainingToTargetZ: number | null = null;
+                try {
+                    const entryAbs = (entrySpreadZ != null) ? Math.abs(entrySpreadZ) : null;
+                    const currAbs = (currentStats?.spreadZ != null) ? Math.abs(currentStats.spreadZ as number) : null;
+                    if (entryAbs != null && currAbs != null && Number.isFinite(entryAbs) && entryAbs > 0 && Number.isFinite(currAbs)) {
+                        const raw = (entryAbs - currAbs) / entryAbs;
+                        convergenceProgress = Math.max(0, Math.min(1, raw));
+                        const targetAbs = 0.5;
+                        remainingToTargetZ = Math.max(currAbs - targetAbs, 0);
+                        if (entryAbs <= targetAbs) {
+                            // If we entered already inside target band, consider fully converged when still inside
+                            convergenceToTargetPct = currAbs <= targetAbs ? 1 : 0;
+                        } else {
+                            const denom = Math.max(entryAbs - targetAbs, 1e-9);
+                            const rawTarget = (entryAbs - Math.max(currAbs, targetAbs)) / denom;
+                            convergenceToTargetPct = Math.max(0, Math.min(1, rawTarget));
+                        }
+                    }
+                } catch { convergenceProgress = null; }
+                const elapsedHours = (elapsedMs != null) ? (elapsedMs / (1000 * 60 * 60)) : null;
+                const elapsedHalfLives = (currentHalfLife != null && elapsedHours != null && currentHalfLife > 0)
+                    ? (elapsedHours / currentHalfLife)
+                    : null;
                 const exitSignals = {
                     profitTarget: (currentStats?.spreadZ != null) && Math.abs(currentStats.spreadZ) <= 0.5,
                     timeStop: currentHalfLife != null && elapsedMs != null &&
@@ -265,6 +290,9 @@ export class Orchestrator {
                     entryTime: baseline?.entryTime,
                     elapsedMs,
                     convergenceProgress,
+                    convergenceToTargetPct,
+                    remainingToTargetZ,
+                    elapsedHalfLives,
                     exitSignals
                 } as any);
             }

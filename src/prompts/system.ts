@@ -28,6 +28,11 @@ export function getSystemPrompt(): string {
         '- Portfolio: balanceUsd, equityUsd, availableMarginUsd, openPositionsCount\n' +
         '- Open Positions: symbol, direction, entryPrice, qty, unrealizedPnl, leverage\n' +
         '- State JSON: activePairs with pnlUsd, spreadZ, halfLifeHours (hours), entrySpreadZ, deltaSpreadZ, entryHalfLifeHours (hours), deltaHalfLife, convergencePct, exitSignals\n' +
+        '  - Convergence Metrics:\n' +
+        '    - convergencePct: (|entrySpreadZ| - |currentSpreadZ|) / |entrySpreadZ|, clamped to [0,1]\n' +
+        '    - convergenceToTargetPct: progress toward |spreadZ| ≤ 0.5 using (|entryZ| - max(|currentZ|, 0.5)) / (|entryZ| - 0.5), clamped\n' +
+        '    - remainingToTargetZ: max(|currentSpreadZ| - 0.5, 0)\n' +
+        '    - elapsedHalfLives: elapsedHours / halfLifeHours (when halfLifeHours > 0)\n' +
         '- Pairs: Enhanced candidates with statistical metrics (corr, beta, spreadZ, adfT, halfLife, fundingNet) + technical indicators (rsiDivergence, volumeConfirmation, regimeScore, adxTrend, volumeTrend)\n\n' +
         '## Core Rules\n\n' +
         '1. **Statistical Thresholds**:\n' +
