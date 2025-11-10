@@ -159,6 +159,11 @@ INSERT INTO pairs_events (ts, type, data_json) VALUES (?, ?, ?)
         }
         return out;
     }
+
+    getOpenActivePairs(): Array<{ pairKey: string; long: string; short: string; entryTime: number; entrySpreadZ?: number | null; entryHalfLife?: number | null; realizedPnlUsd?: number | null }> {
+        const rows = this.db.prepare('SELECT pair_key as pairKey, long_symbol as long, short_symbol as short, entry_time as entryTime, entry_spread_z as entrySpreadZ, entry_half_life as entryHalfLife, realized_pnl_usd as realizedPnlUsd FROM active_pairs WHERE closed_at IS NULL').all() as Array<any>;
+        return rows || [];
+    }
 }
 
 

@@ -165,135 +165,108 @@ export class Orchestrator {
                 positionBySymbol.set(pos.symbol, pos);
             }
 
-            // Find active pairs by identifying long/short position pairs
-            const processedPairs = new Set<string>();
-            const usedSymbols = new Set<string>();
+            // Prefer authoritative list from SQL active_pairs; fallback to bootstrap if empty
+            let authoritativePairs: Array<{ long: string; short: string; entryTime: number; entrySpreadZ?: number | null; entryHalfLife?: number | null }> = [];
+            try {
+                const { getDb } = await import('../db/sqlite.js');
+                const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                const repo = new SqliteRepo(await getDb());
+                authoritativePairs = repo.getOpenActivePairs().map(r => ({ long: r.long, short: r.short, entryTime: r.entryTime, entrySpreadZ: r.entrySpreadZ, entryHalfLife: r.entryHalfLife }));
+            } catch { }
 
-            for (const pos1 of positions) {
-                if (usedSymbols.has(pos1.symbol)) continue;
-
-                for (const pos2 of positions) {
-                    if (pos1 === pos2 || usedSymbols.has(pos2.symbol)) continue;
-
-                    // Check if these positions form a pair (one long, one short)
-                    const isPair = (pos1.direction === 'LONG' && pos2.direction === 'SHORT') ||
-                        (pos1.direction === 'SHORT' && pos2.direction === 'LONG');
-
-                    if (!isPair) continue;
-
-                    const longSymbol = pos1.direction === 'LONG' ? pos1.symbol : pos2.symbol;
-                    const shortSymbol = pos1.direction === 'SHORT' ? pos1.symbol : pos2.symbol;
-                    const pairId = createPairKey(longSymbol, shortSymbol);
-
-                    if (processedPairs.has(pairId)) continue;
-
-                    // Check if we have baseline data for this pair; if missing, bootstrap baseline
-                    let baseline = pairBaselines[pairId];
-                    if (!baseline) {
-                        try {
-                            const { getDb } = await import('../db/sqlite.js');
-                            const { SqliteRepo } = await import('../services/sqliteRepo.js');
-                            const repo = new SqliteRepo(await getDb());
-                            const nowTs = Date.now();
-                            // Ensure we have some current stats for entry fields
-                            let stats = pairStatsMap.get(pairId);
-                            if (!stats) {
-                                const snap = repo.getLatestPairStatsFromSnapshot(longSymbol, shortSymbol);
-                                if (snap) stats = { spreadZ: (snap as any).spreadZ, halfLife: (snap as any).halfLife } as any;
-                            }
-                            repo.upsertActivePair(pairId, longSymbol, shortSymbol, {
-                                time: nowTs,
-                                spreadZ: (stats as any)?.spreadZ ?? null,
-                                halfLife: (stats as any)?.halfLife ?? null
-                            });
-                            pairBaselines[pairId] = { entryTime: nowTs, entrySpreadZ: (stats as any)?.spreadZ ?? undefined, entryHalfLife: (stats as any)?.halfLife ?? null } as any;
-                            baseline = pairBaselines[pairId];
-                        } catch { /* if bootstrap fails, skip pair this cycle */ }
-                        if (!baseline) continue;
-                    }
-
-                    // Mark as processed
-                    processedPairs.add(pairId);
-                    usedSymbols.add(longSymbol);
-                    usedSymbols.add(shortSymbol);
-
-                    let currentStats = pairStatsMap.get(pairId);
-
-                    // Backfill stats from SQL if missing
-                    if (!currentStats) {
-                        try {
-                            const { getDb } = await import('../db/sqlite.js');
-                            const { SqliteRepo } = await import('../services/sqliteRepo.js');
-                            const repo = new SqliteRepo(await getDb());
-                            const hist = repo.getLatestPairHistory(pairId);
-                            if (hist && (hist.spreadZ != null || hist.halfLife != null)) {
-                                currentStats = { spreadZ: hist.spreadZ ?? undefined, halfLife: hist.halfLife ?? null } as any;
-                            } else {
-                                const snap = repo.getLatestPairStatsFromSnapshot(longSymbol, shortSymbol);
-                                if (snap && (snap.spreadZ != null || snap.halfLife != null)) {
-                                    currentStats = { spreadZ: snap.spreadZ ?? undefined, halfLife: snap.halfLife ?? null } as any;
-                                }
-                            }
-                        } catch { }
-                    }
-
-                    const longPos = positionBySymbol.get(longSymbol);
-                    const shortPos = positionBySymbol.get(shortSymbol);
-
-                    if (!longPos || !shortPos) {
-                        this.log('missing position data for pair %s', pairId);
-                        continue;
-                    }
-
-                    // Calculate combined P&L
-                    const pnlUsd = (longPos.unrealizedPnl ?? 0) + (shortPos.unrealizedPnl ?? 0);
-
-                    // Calculate deltas from entry
-                    const entrySpreadZ = baseline.entrySpreadZ;
-                    const deltaSpreadZ = (typeof currentStats?.spreadZ === 'number' && typeof entrySpreadZ === 'number')
-                        ? (currentStats.spreadZ - entrySpreadZ)
-                        : undefined;
-
-                    const entryHalfLife = baseline.entryHalfLife;
-                    const currentHalfLife = currentStats?.halfLife ?? null;
-                    const deltaHalfLife = (entryHalfLife != null && currentHalfLife != null)
-                        ? (currentHalfLife - entryHalfLife)
-                        : null;
-
-                    const elapsedMs = (typeof baseline.entryTime === 'number')
-                        ? (Date.now() - baseline.entryTime)
-                        : undefined;
-
-                    // Calculate convergence metrics
-                    const convergenceProgress = (deltaSpreadZ != null && entrySpreadZ != null) ?
-                        Math.abs(deltaSpreadZ) / Math.abs(entrySpreadZ) : null;
-
-                    // Calculate exit signals
-                    const exitSignals = {
-                        profitTarget: (currentStats?.spreadZ != null) && Math.abs(currentStats.spreadZ) <= 0.5,
-                        timeStop: currentHalfLife != null && elapsedMs != null &&
-                            (elapsedMs / (1000 * 60 * 60)) >= (2 * currentHalfLife),
-                        convergence: convergenceProgress != null && convergenceProgress >= 0.5,
-                        riskReduction: pnlUsd <= -40,
-                        riskExit: pnlUsd <= -100
-                    } as any;
-
-                    activePairs.push({
-                        long: longSymbol,
-                        short: shortSymbol,
-                        pnlUsd,
-                        spreadZ: currentStats?.spreadZ,
-                        halfLife: currentHalfLife,
-                        entrySpreadZ,
-                        deltaSpreadZ,
-                        entryHalfLife,
-                        deltaHalfLife,
-                        entryTime: baseline.entryTime,
-                        elapsedMs,
-                        convergenceProgress,
-                        exitSignals
-                    } as any);
+            if (authoritativePairs.length === 0) {
+                const longs = positions.filter(p => p.direction === 'LONG').map(p => p.symbol);
+                const shorts = positions.filter(p => p.direction === 'SHORT').map(p => p.symbol);
+                const used = new Set<string>();
+                for (const lo of longs) {
+                    if (used.has(lo)) continue;
+                    const sh = shorts.find(s => !used.has(s));
+                    if (!sh) continue;
+                    const id = createPairKey(lo, sh);
+                    authoritativePairs.push({ long: lo, short: sh, entryTime: Date.now() });
+                    used.add(lo); used.add(sh);
+                    // bootstrap to SQL baseline
+                    try {
+                        const { getDb } = await import('../db/sqlite.js');
+                        const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                        const repo = new SqliteRepo(await getDb());
+                        const stats = pairStatsMap.get(id) || null;
+                        repo.upsertActivePair(id, lo, sh, { time: Date.now(), spreadZ: (stats as any)?.spreadZ ?? null, halfLife: (stats as any)?.halfLife ?? null });
+                        pairBaselines[id] = { entryTime: Date.now(), entrySpreadZ: (stats as any)?.spreadZ ?? undefined, entryHalfLife: (stats as any)?.halfLife ?? null } as any;
+                    } catch { }
                 }
+            }
+
+            const processedPairs = new Set<string>();
+            for (const ap of authoritativePairs) {
+                const longSymbol = ap.long;
+                const shortSymbol = ap.short;
+                const pairId = createPairKey(longSymbol, shortSymbol);
+                if (processedPairs.has(pairId)) continue;
+                processedPairs.add(pairId);
+
+                const baseline = pairBaselines[pairId];
+                const longPos = positionBySymbol.get(longSymbol);
+                const shortPos = positionBySymbol.get(shortSymbol);
+                if (!longPos || !shortPos) continue;
+
+                let currentStats = pairStatsMap.get(pairId);
+                if (!currentStats) {
+                    try {
+                        const { getDb } = await import('../db/sqlite.js');
+                        const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                        const repo = new SqliteRepo(await getDb());
+                        const hist = repo.getLatestPairHistory(pairId);
+                        if (hist && (hist.spreadZ != null || hist.halfLife != null)) {
+                            currentStats = { spreadZ: hist.spreadZ ?? undefined, halfLife: hist.halfLife ?? null } as any;
+                        } else {
+                            const snap = repo.getLatestPairStatsFromSnapshot(longSymbol, shortSymbol);
+                            if (snap && (snap.spreadZ != null || snap.halfLife != null)) {
+                                currentStats = { spreadZ: snap.spreadZ ?? undefined, halfLife: snap.halfLife ?? null } as any;
+                            }
+                        }
+                    } catch { }
+                }
+
+                const pnlUsd = (longPos.unrealizedPnl ?? 0) + (shortPos.unrealizedPnl ?? 0);
+                const entrySpreadZ = baseline?.entrySpreadZ;
+                const deltaSpreadZ = (typeof currentStats?.spreadZ === 'number' && typeof entrySpreadZ === 'number')
+                    ? (currentStats.spreadZ - entrySpreadZ)
+                    : undefined;
+                const entryHalfLife = baseline?.entryHalfLife;
+                const currentHalfLife = currentStats?.halfLife ?? null;
+                const deltaHalfLife = (entryHalfLife != null && currentHalfLife != null)
+                    ? (currentHalfLife - entryHalfLife)
+                    : null;
+                const elapsedMs = (baseline && typeof baseline.entryTime === 'number')
+                    ? (Date.now() - baseline.entryTime)
+                    : undefined;
+                const convergenceProgress = (deltaSpreadZ != null && entrySpreadZ != null) ?
+                    Math.abs(deltaSpreadZ) / Math.abs(entrySpreadZ) : null;
+                const exitSignals = {
+                    profitTarget: (currentStats?.spreadZ != null) && Math.abs(currentStats.spreadZ) <= 0.5,
+                    timeStop: currentHalfLife != null && elapsedMs != null &&
+                        (elapsedMs / (1000 * 60 * 60)) >= (2 * currentHalfLife),
+                    convergence: convergenceProgress != null && convergenceProgress >= 0.5,
+                    riskReduction: pnlUsd <= -40,
+                    riskExit: pnlUsd <= -100
+                } as any;
+
+                activePairs.push({
+                    long: longSymbol,
+                    short: shortSymbol,
+                    pnlUsd,
+                    spreadZ: currentStats?.spreadZ,
+                    halfLife: currentHalfLife,
+                    entrySpreadZ,
+                    deltaSpreadZ,
+                    entryHalfLife,
+                    deltaHalfLife,
+                    entryTime: baseline?.entryTime,
+                    elapsedMs,
+                    convergenceProgress,
+                    exitSignals
+                } as any);
             }
 
             this.log('identified %d active pairs from %d positions', activePairs.length, positions.length);
