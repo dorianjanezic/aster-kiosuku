@@ -16,12 +16,22 @@ const PairSchema = z.object({
     corr: z.number().optional(),
     beta: z.number().optional(),
     hedgeRatio: z.number().optional(),
-    cointegration: z.object({ adfT: z.number().optional(), p: z.number().nullable().optional(), lags: z.number().optional(), halfLife: z.number().optional(), stationary: z.boolean().optional() }).optional(),
+    cointegration: z.object({
+        adfT: z.number().optional(),
+        p: z.number().nullable().optional(),
+        lags: z.number().optional(),
+        halfLife: z.number().optional(),
+        stationary: z.boolean().optional()
+    }).optional(),
     spreadZ: z.number().optional(),
+    spreadVol: z.number().optional(),
+    ratioZ: z.number().optional(),
     fundingNet: z.number().optional(),
     scores: z.object({ long: z.number().optional(), short: z.number().optional(), composite: z.number().optional() }).optional(),
     notes: z.array(z.string()).optional(),
     sector: z.string().optional(),
+    ecosystem: z.string().optional(),
+    assetType: z.string().optional(),
     prices: z.object({ long: PriceSchema, short: PriceSchema }).optional()
 })
 

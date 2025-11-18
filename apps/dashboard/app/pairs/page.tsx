@@ -25,10 +25,14 @@ const PairSchema = z.object({
     hedgeRatio: z.number(),
     cointegration: z.object({ adfT: z.number(), p: z.number().nullable(), lags: z.number(), halfLife: z.number(), stationary: z.boolean() }),
     spreadZ: z.number(),
+    spreadVol: z.number().optional(),
+    ratioZ: z.number().optional(),
     fundingNet: z.number().optional(),
     scores: z.object({ long: z.number(), short: z.number(), composite: z.number() }),
     notes: z.array(z.string()).optional(),
     sector: z.string().optional(),
+    ecosystem: z.string().optional(),
+    assetType: z.string().optional(),
     prices: z.object({ long: PriceSchema, short: PriceSchema })
 })
 
@@ -234,6 +238,20 @@ export default function PairsPage() {
                                     >
                                         <div className="flex items-center justify-end gap-1"><MetricHeader align="right" label="Spread Z" tip="Z-score of the cointegrated spread (magnitude shows current divergence)" /> {getSortIcon('spreadZ')}</div>
                                     </th>
+                                    <th className="px-4 py-3 text-right font-medium">
+                                        <MetricHeader
+                                            align="right"
+                                            label="Ratio Z"
+                                            tip="Z-score of log(price_long / price_short) over a recent window (higher |Z| = larger relative mispricing)"
+                                        />
+                                    </th>
+                                    <th className="px-4 py-3 text-right font-medium">
+                                        <MetricHeader
+                                            align="right"
+                                            label="Spread Vol"
+                                            tip="Standard deviation of the log spread series (higher = noisier, riskier spread)"
+                                        />
+                                    </th>
                                     <th
                                         className="px-4 py-3 text-right font-medium cursor-pointer hover:bg-muted/70 transition-colors"
                                         onClick={() => handleSort('halfLife')}
@@ -258,7 +276,12 @@ export default function PairsPage() {
                                     >
                                         <div className="flex items-center justify-end gap-1"><MetricHeader align="right" label="Score" tip="Composite ranking combining correlation, divergence, half-life, stationarity and technicals" /> {getSortIcon('composite')}</div>
                                     </th>
-                                    <th className="px-4 py-3 text-left font-medium"><MetricHeader label="Sector" tip="Primary sector(s) of the pair; mixed shows A/B when legs differ" /></th>
+                                    <th className="px-4 py-3 text-left font-medium">
+                                        <MetricHeader
+                                            label="Sector"
+                                            tip="Primary sector(s) of the pair; mixed shows A/B when legs differ"
+                                        />
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -267,6 +290,7 @@ export default function PairsPage() {
                                     const dispLong = swapped ? p.short : p.long
                                     const dispShort = swapped ? p.long : p.short
                                     const displayedZ = Math.abs(swapped ? -p.spreadZ : p.spreadZ)
+                                    const ratioZAbs = p.ratioZ != null ? Math.abs(p.ratioZ) : null
                                     const displayedSector = (() => {
                                         if (!p.sector) return 'Unknown'
                                         const parts = String(p.sector).split('/')
@@ -301,6 +325,24 @@ export default function PairsPage() {
                                                 <span className={displayedZ > 1.5 ? "font-medium" : ""}>
                                                     {displayedZ.toFixed(3)}
                                                 </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                {ratioZAbs != null ? (
+                                                    <span className={ratioZAbs > 1.5 ? "font-medium" : ""}>
+                                                        {ratioZAbs.toFixed(3)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-muted-foreground">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                {p.spreadVol != null ? (
+                                                    <span>
+                                                        {p.spreadVol.toFixed(4)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-muted-foreground">-</span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <span className={p.cointegration.halfLife < 25 ? "text-green-600" : p.cointegration.halfLife > 50 ? "text-red-600" : ""}>
