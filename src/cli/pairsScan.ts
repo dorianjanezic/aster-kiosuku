@@ -53,11 +53,24 @@ async function main() {
 
     const started = Date.now();
     const { pairs } = await buildPairCandidates('sim_data/markets.json', Number(process.env.PAIRS_PER_SECTOR || '5'), client);
+    const asOf = Date.now();
+    const snapshot = { asOf, pairs };
+
+    // Write latest snapshot and a versioned file for easier comparison
+    try {
+        await fs.writeFile(outPath, JSON.stringify(snapshot, null, 2), 'utf8');
+        const iso = new Date(asOf).toISOString().replace(/[:.]/g, '-');
+        const versionedPath = `sim_data/pairs-${iso}.json`;
+        await fs.writeFile(versionedPath, JSON.stringify(snapshot, null, 2), 'utf8');
+        console.log(`[pairs:scan] wrote JSON snapshots to ${outPath} and ${versionedPath}`);
+    } catch (e) {
+        console.log('[pairs:scan] failed to write JSON snapshots', e);
+    }
     try {
         const { getDb } = await import('../db/sqlite.js');
         const { SqliteRepo } = await import('../services/sqliteRepo.js');
         const repo = new SqliteRepo(await getDb());
-        repo.insertPairsSnapshot(Date.now(), { asOf: Date.now(), pairs });
+        repo.insertPairsSnapshot(asOf, snapshot);
         console.log(`[pairs:scan] wrote ${pairs.length} pairs -> sqlite in ${Date.now() - started}ms`);
     } catch {
         console.log(`[pairs:scan] wrote ${pairs.length} pairs (sqlite) in ${Date.now() - started}ms`);

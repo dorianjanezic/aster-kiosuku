@@ -41,15 +41,28 @@ export function getUserPrompt(args: { account: SimAccount; positions: SimPositio
             const corr = typeof p.corr === 'number' ? p.corr : -Infinity;
             const cointegration = p.cointegration || {};
             const adfT = typeof cointegration.adfT === 'number' ? cointegration.adfT : Infinity;
+            const adfP = typeof cointegration.p === 'number' ? cointegration.p : null;
             const halfLife = typeof cointegration.halfLife === 'number' ? cointegration.halfLife : Infinity;
             const spreadZ = typeof p.spreadZ === 'number' ? p.spreadZ : 0;
             const absZ = Math.abs(spreadZ);
+
+            const minCorr = Number(process.env.PROMPT_PAIRS_MIN_CORR || process.env.PAIRS_MIN_CORR || '0.7');
+            const maxHalfLife = Number(process.env.PROMPT_PAIRS_MAX_HALFLIFE || process.env.PAIRS_MAX_HALFLIFE_DAYS || '40');
+            const maxAdfP = Number(process.env.PROMPT_PAIRS_MAX_ADF_P || process.env.PAIRS_MAX_ADF_P || '0.10');
+            const minSpreadZ = Number(process.env.PROMPT_PAIRS_MIN_SPREADZ || process.env.PAIRS_MIN_SPREADZ || '0.8');
+
+            const stationaryByP = (adfP != null && Number.isFinite(adfP)) ? (adfP <= maxAdfP) : null;
+            const stationaryByT = (Number.isFinite(adfT)) ? (adfT <= -1.645) : null;
+            const stationaryOk = stationaryByP ?? stationaryByT ?? false;
+
             return (
-                Number.isFinite(corr) && Number.isFinite(adfT) && Number.isFinite(halfLife) && Number.isFinite(absZ) &&
-                corr >= 0.7 &&
-                adfT <= -1.645 &&
-                halfLife <= 40 &&
-                absZ >= 0.8
+                Number.isFinite(corr) &&
+                Number.isFinite(halfLife) &&
+                Number.isFinite(absZ) &&
+                corr >= minCorr &&
+                halfLife <= maxHalfLife &&
+                absZ >= minSpreadZ &&
+                stationaryOk
             );
         });
 
@@ -60,20 +73,28 @@ export function getUserPrompt(args: { account: SimAccount; positions: SimPositio
             const cointegration = (p as any).cointegration || {};
             const corr = Math.max(0, Math.min(1, p.corr || 0));
             const absZ = Math.min(Math.abs((p as any).spreadZ || 0), 3); // clamp |Z| ≤ 3
+            const ratioZAbs = Math.min(Math.abs((p as any).ratioZ || 0), 3);
+            const spreadVol = Math.max(0, (p as any).spreadVol || 0);
             const scoreLong = Math.max(-1, Math.min(1, (p as any).scores?.long || 0));
             const scoreShort = Math.max(-1, Math.min(1, (p as any).scores?.short || 0));
             const halfLifePeriods = Math.min((cointegration.halfLife || 0), 60); // cap at 60p
             const adfT = (cointegration.adfT || 0);
             const adfTEffective = Math.max(-10, Math.min(0, adfT)); // clamp [-10, 0]
             const fundingNet = (p as any).fundingNet || 0;
+
+            // Penalize very noisy spreads by subtracting a function of spreadVol (scale factor chosen heuristically)
+            const spreadVolPenalty = spreadVol * 50; // spreadVol ~ 0.02-0.07 → penalty ~1-3.5
+
             const qualityScore = (
                 corr * 0.25 +
-                absZ * 0.25 +
+                absZ * 0.20 +
+                ratioZAbs * 0.10 +
                 (scoreLong * 0.15) +
                 (scoreShort * 0.15) -
-                (halfLifePeriods / 5) * 0.1 +
-                (-(adfTEffective)) * 0.1 -
-                (fundingNet * 200)  // toned down funding weight
+                (halfLifePeriods / 5) * 0.08 +
+                (-(adfTEffective)) * 0.07 -
+                (fundingNet * 200) -  // toned down funding weight
+                spreadVolPenalty * 0.05
             );
 
             return {
@@ -106,18 +127,21 @@ export function getUserPrompt(args: { account: SimAccount; positions: SimPositio
                 const scores = (p as any).scores || {};
                 const sZ = Number(((p as any).spreadZ || 0));
                 const sZAbs = Math.abs(sZ);
+                const ratioZ = Number(((p as any).ratioZ || 0));
+                const spreadVol = (p as any).spreadVol;
                 const suggLong = sZ > 0 ? p.short : p.long; // positive Z -> short long-leg, long short-leg
                 const suggShort = sZ > 0 ? p.long : p.short;
                 return `    ${i + 1}. ${p.long}/${p.short} (${p.sector || p.ecosystem || 'Unknown'})\n` +
-                    `       Stats: corr=${p.corr?.toFixed(3)}, beta=${p.beta?.toFixed(3) || 'null'}, adfT=${((p as any).cointegration?.adfT || 0)?.toFixed(2)}, halfLifePeriods=${((p as any).cointegration?.halfLife || 0)?.toFixed(1)}p, spreadZSigned=${sZ.toFixed(2)}, |spreadZ|=${sZAbs.toFixed(2)}, fundingNet=${((p as any).fundingNet || 0)?.toFixed(6)}\n` +
+                    `       Stats: corr=${p.corr?.toFixed(3)}, beta=${p.beta?.toFixed(3) || 'null'}, adfT=${((p as any).cointegration?.adfT || 0)?.toFixed(2)}, halfLifePeriods=${((p as any).cointegration?.halfLife || 0)?.toFixed(1)}p, spreadZSigned=${sZ.toFixed(2)}, |spreadZ|=${sZAbs.toFixed(2)}, ratioZ=${ratioZ.toFixed(2)}, spreadVol=${spreadVol != null ? spreadVol.toFixed(4) : 'null'}, fundingNet=${((p as any).fundingNet || 0)?.toFixed(6)}\n` +
                     `       Direction: long ${suggLong}, short ${suggShort}\n` +
                     `       Technical: rsiDiv=${tech.rsiDivergence?.toFixed(2) || 'null'}, volConf=${tech.volumeConfirmation?.toFixed(2) || 'null'}, regime=${tech.regimeScore?.toFixed(2) || 'null'}, adx=${tech.adxTrend?.toFixed(1) || 'null'}\n` +
                     `       Scores: long=${scores.long?.toFixed(2) || 'null'}, short=${scores.short?.toFixed(2) || 'null'}, composite=${scores.composite?.toFixed(2) || 'null'}\n` +
                     `       Quality: ${p.qualityScore}\n`;
             }).join('') +
-            '\n    Criteria: corr≥0.7, adfT≤-1.645, halfLife≤40 periods, |spreadZ|≥0.8\n' +
+            '\n    Criteria: corr≥0.7 (or PAIRS_MIN_CORR), ADF p-value≤0.10 (or adfT≤-1.645), halfLife≤40 periods, |spreadZ|≥0.8, and prefer |ratioZ|≥0.8\n' +
             '    Units: pairs halfLife is in periods; state JSON halfLifeHours/entryHalfLifeHours are hours\n' +
             '    Technical: Prefer positive rsiDivergence, volumeConfirmation, and low ADX (ranging markets)\n' +
+            '    Sizing: For similar quality signals, favor lower spreadVol (tighter spreads) with larger notional and higher spreadVol with smaller notional.\n' +
             '  </pairs>\n');
     })();
 

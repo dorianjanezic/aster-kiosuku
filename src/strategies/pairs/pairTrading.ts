@@ -118,6 +118,29 @@ type Market = {
     };
 };
 
+// Approximate number of bars per day for a given kline interval string (e.g. "1h", "4h", "1d").
+function getBarsPerDay(interval: string): number {
+    const m = interval.match(/^(\d+)([mhd])$/i);
+    if (!m) return 24; // Default to 1h bars
+    const n = Number(m[1] || '1');
+    const unit = m[2]?.toLowerCase();
+    if (!Number.isFinite(n) || n <= 0) return 24;
+    switch (unit) {
+        case 'm': {
+            const minutesPerDay = 24 * 60;
+            return minutesPerDay / n;
+        }
+        case 'h': {
+            const hoursPerDay = 24;
+            return hoursPerDay / n;
+        }
+        case 'd':
+            return 1 / n;
+        default:
+            return 24;
+    }
+}
+
 export type PairCandidate = {
     sector?: string;
     ecosystem?: string;
@@ -129,6 +152,10 @@ export type PairCandidate = {
     hedgeRatio?: number;
     cointegration?: { adfT?: number; p?: number | null; lags?: number; halfLife?: number | null; stationary?: boolean };
     spreadZ?: number;
+    // Standard deviation of the log spread series used for ADF (spread volatility)
+    spreadVol?: number;
+    // Log price ratio z-score over a recent window (e.g. 14–30 days)
+    ratioZ?: number;
     fundingNet?: number; // estimated per-period net funding carry for dollar-neutral sizing
     // Enhanced technical indicators
     technicals?: {
@@ -244,7 +271,16 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
         const W3 = Number(process.env.PAIRS_W_FUND || '0.2');
         const W4 = Number(process.env.PAIRS_W_QV || '0.1');
         const W5 = Number(process.env.PAIRS_W_RSI || '0.2');
-        log('weights W1=%s W2=%s W3=%s W4=%s W5=%s minCorr=%s', W1, W2, W3, W4, W5, process.env.PAIRS_MIN_CORR || '0.6');
+        const minCorr = Number(process.env.PAIRS_MIN_CORR || '0.7');
+        const corrDays = Number(process.env.PAIRS_CORR_DAYS || '90');
+        const ratioDaysDefault = Number(process.env.PAIRS_RATIO_DAYS || '21');
+        const ratioDaysMin = Number(process.env.PAIRS_RATIO_MIN_DAYS || '14');
+        const ratioDaysMax = Number(process.env.PAIRS_RATIO_MAX_DAYS || '30');
+        const ratioDays = Math.min(
+            Number.isFinite(ratioDaysMax) ? ratioDaysMax : 30,
+            Math.max(Number.isFinite(ratioDaysMin) ? ratioDaysMin : 14, Number.isFinite(ratioDaysDefault) ? ratioDaysDefault : 21)
+        );
+        log('weights W1=%s W2=%s W3=%s W4=%s W5=%s minCorr=%s corrDays=%s ratioDays=%s', W1, W2, W3, W4, W5, minCorr, corrDays, ratioDays);
         // Align signs: favor higher liquidity, volume, funding, RSI
         const comp = tradable.map((_, i) => (W1 * (liqZ[i] ?? 0)) + (W2 * (volZ[i] ?? 0)) + (W3 * (fundZ[i] ?? 0)) + (W4 * (qvZ[i] ?? 0)) + (W5 * (rsiZ[i] ?? 0)));
         const ranked = tradable.map((t, i) => ({ t, s: comp[i], i, rsi: rsiValues[i] }))
@@ -288,11 +324,19 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
         const symbolToIndex = new Map(candidateSymbols.map((s, i) => [s, i]));
         const returnsMatrix: number[][] = [];
 
+        // Determine correlation lookback window in bars (approximate 90 days by default)
+        const intervalStr = process.env.PAIRS_INTERVAL || '1h';
+        const corrLookbackDays = Number(process.env.PAIRS_CORR_DAYS || '90');
+        const barsPerDay = getBarsPerDay(intervalStr);
+        const corrLookbackBars = Math.max(30, Math.floor(corrLookbackDays * barsPerDay)); // Ensure a minimum window
+
         // Build returns matrix for correlation computation
         for (const symbol of candidateSymbols) {
             const priceSeries = series.get(symbol);
             if (priceSeries && priceSeries.length >= 50) { // Ensure minimum data
-                const returns = logReturns(priceSeries);
+                // Use only the most recent window for correlation estimation
+                const clipped = priceSeries.slice(-Math.min(corrLookbackBars + 1, priceSeries.length));
+                const returns = logReturns(clipped);
                 if (returns.length >= 20) { // Ensure minimum returns data
                     returnsMatrix.push(returns);
                 } else {
@@ -333,7 +377,7 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                 const a = series.get(lo.t.symbol);
                 const b = series.get(hi.t.symbol);
                 let corr: number | undefined; let beta: number | undefined;
-                let hedgeRatio: number | undefined; let adfT: number | undefined; let adfP: number | null = null; let halfLife: number | null = null; let stationary = false; let spreadZ: number | undefined; let fundingNet: number | undefined;
+                let hedgeRatio: number | undefined; let adfT: number | undefined; let adfP: number | null = null; let halfLife: number | null = null; let stationary = false; let spreadZ: number | undefined; let spreadVol: number | undefined; let fundingNet: number | undefined; let ratioZ: number | undefined;
                 if (a && b) {
                     // Check minimum data requirements first
                     const dataReqCheck = ensureMinimumDataRequirements(a, b);
@@ -407,7 +451,7 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
 
 
                     if (!noFilters) {
-                        if ((corr ?? 0) < Number(process.env.PAIRS_MIN_CORR || '0.7')) {
+                        if ((corr ?? 0) < minCorr) {
                             skippedCorr++;
                             void ledger.append('invalid_pair', { key, reason: 'low_correlation', corr });
                             continue;
@@ -439,17 +483,48 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                             }
                         }
 
-                        // Calculate spread z-score using sample standard deviation
+                        // Calculate spread volatility and current spread z-score using sample standard deviation
                         // Use available data even if less than 30 points
-                        if (spread.length >= 5) { // Minimum for meaningful z-score
+                        if (spread.length >= 5) { // Minimum for meaningful stats
                             try {
+                                spreadVol = sampleStd(spread);
                                 const spreadZScores = zScores(spread, true); // Use sample std
                                 spreadZ = spreadZScores[spreadZScores.length - 1] ?? 0;
-                            } catch (e) {
+                            } catch {
+                                spreadVol = undefined;
                                 spreadZ = 0; // Default to neutral if calculation fails
                             }
                         } else {
+                            spreadVol = undefined;
                             spreadZ = 0; // Default to neutral if insufficient data
+                        }
+
+                        // Calculate log price ratio z-score over a recent window (e.g. 14–30 days)
+                        try {
+                            const ratioSeries: number[] = [];
+                            const len = Math.min(logPricesA.length, logPricesB.length);
+                            for (let i = 0; i < len; i++) {
+                                const v = logPricesA[i]! - logPricesB[i]!;
+                                if (Number.isFinite(v)) ratioSeries.push(v);
+                            }
+                            const minRatioBars = 20;
+                            if (ratioSeries.length >= minRatioBars) {
+                                const ratioLookbackBars = Math.max(
+                                    minRatioBars,
+                                    Math.floor(ratioDays * barsPerDay)
+                                );
+                                const windowSize = Math.min(ratioSeries.length, ratioLookbackBars);
+                                const window = ratioSeries.slice(-windowSize);
+                                const mean = window.reduce((a, b) => a + b, 0) / window.length;
+                                const variance = window.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, window.length - 1);
+                                const std = Math.sqrt(variance) || 1e-12;
+                                const latest = window[window.length - 1]!;
+                                ratioZ = (latest - mean) / std;
+                            } else {
+                                ratioZ = 0;
+                            }
+                        } catch {
+                            ratioZ = 0;
                         }
 
                         // Perform ADF test on spread for cointegration
@@ -492,12 +567,13 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                 const fallbackHalf = Number(process.env.PAIRS_FALLBACK_MAX_HALFLIFE_DAYS || '40');
                 const strictSpread = Number(process.env.PAIRS_MIN_SPREADZ || '0.8');
                 const fallbackSpread = Number(process.env.PAIRS_FALLBACK_MIN_SPREADZ || '0.5');
+                const maxAdfP = Number(process.env.PAIRS_MAX_ADF_P || '0.10');
 
                 let relaxed = false;
                 if (!noFilters) {
-                    // Check for basic mean-reversion using simplified ADF test
-                    if (stationary === false || adfT == null || adfT > -1.645) {
-                        void ledger.append('invalid_pair', { key, reason: 'non_stationary', adfT, adfP });
+                    // Check for basic mean-reversion using ADF p-value threshold
+                    if (stationary === false || adfP == null || adfP > maxAdfP) {
+                        void ledger.append('invalid_pair', { key, reason: 'non_stationary', adfT, adfP, maxAdfP });
                         continue;
                     }
                     // Check half-life for reasonable mean-reversion speed
@@ -527,15 +603,16 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                 const enhancedTech = calculateEnhancedTechnicals(longKlines, shortKlines);
 
                 const ls = lo.s ?? 0; const hs = hi.s ?? 0;
+                const ratioZAbs = Math.abs(ratioZ ?? 0);
                 // Enhanced composite scoring with technical indicators
-                // 0.2*corr + 0.2*|spreadZ| + 0.15*loScore + 0.15*hiScore - 0.08*(halfLife/5) + 0.08*adfT + 0.07*rsiDiv + 0.07*volConf + 0.08*regime
+                // 0.2*corr + 0.2*|spreadZ| + 0.15*loScore + 0.15*hiScore - 0.08*(halfLife/5) + 0.08*adfT + 0.07*|ratioZ| + 0.07*volConf + 0.08*regime
                 const composite = (0.2 * Math.max(0, corr ?? 0)) +
                     (0.2 * Math.abs(spreadZ ?? 0)) +
                     (0.15 * (ls ?? 0)) +
                     (0.15 * (hs ?? 0)) -
                     (0.08 * ((halfLife ?? 0) / 5)) +
                     (0.08 * Math.max(-5, Math.min(0, adfT ?? 0))) + // Reward significant ADF statistics
-                    (0.07 * (enhancedTech.rsiDivergence ?? 0)) + // RSI divergence confirmation
+                    (0.07 * ratioZAbs) + // Log price ratio z-score over recent window
                     (0.07 * (enhancedTech.volumeConfirmation ?? 0)) + // Volume confirmation
                     (0.08 * (enhancedTech.regimeScore ?? 0)); // Market regime suitability
                 // Ensure we have valid statistical data before creating pair
@@ -556,10 +633,12 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                     hedgeRatio,
                     cointegration: (hedgeRatio != null) ? { adfT, p: adfP, lags: 0, halfLife, stationary } : undefined,
                     spreadZ: spreadZ ?? 0,
+                    spreadVol: spreadVol ?? undefined,
+                    ratioZ: ratioZ ?? 0,
                     fundingNet,
                     technicals: enhancedTech, // Add enhanced technical indicators
                     scores: { long: ls, short: hs, composite },
-                    notes: ['enhanced-scores', `corr:${corr?.toFixed(3)}`, `beta:${beta?.toFixed(3)}`, `spreadZ:${spreadZ?.toFixed(2)}`, `adfT:${adfT?.toFixed(2)}`, `rsiDiv:${enhancedTech.rsiDivergence?.toFixed(2)}`, `regime:${enhancedTech.regimeScore?.toFixed(2)}`],
+                    notes: ['enhanced-scores', `corr:${corr?.toFixed(3)}`, `beta:${beta?.toFixed(3)}`, `spreadZ:${spreadZ?.toFixed(2)}`, `ratioZ:${(ratioZ ?? 0).toFixed(2)}`, `adfT:${adfT?.toFixed(2)}`, `rsiDiv:${enhancedTech.rsiDivergence?.toFixed(2)}`, `regime:${enhancedTech.regimeScore?.toFixed(2)}`],
                     sector: combinedSector as any,
                     // Provide leg-level categories to consumers that want to render both
                     // (frontends use passthrough schemas so extra fields are fine)

@@ -66,6 +66,8 @@ export function startHttpServer(portFromEnv?: number) {
         hedgeRatio: z.number().optional(),
         cointegration: z.any().optional(),
         spreadZ: z.number().optional(),
+        spreadVol: z.number().optional(),
+        ratioZ: z.number().optional(),
         fundingNet: z.number().optional(),
         scores: z.any().optional(),
         notes: z.array(z.string()).optional(),

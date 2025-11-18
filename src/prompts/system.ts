@@ -33,32 +33,47 @@ export function getSystemPrompt(): string {
         '    - convergenceToTargetPct: progress toward |spreadZ| ≤ 0.5 using (|entryZ| - max(|currentZ|, 0.5)) / (|entryZ| - 0.5), clamped\n' +
         '    - remainingToTargetZ: max(|currentSpreadZ| - 0.5, 0)\n' +
         '    - elapsedHalfLives: elapsedHours / halfLifeHours (when halfLifeHours > 0)\n' +
-        '- Pairs: Enhanced candidates with statistical metrics (corr, beta, spreadZ, adfT, halfLife, fundingNet) + technical indicators (rsiDivergence, volumeConfirmation, regimeScore, adxTrend, volumeTrend)\n\n' +
+        '- Pairs: Enhanced candidates with statistical metrics and features:\n' +
+        '  - Correlation (corr) and beta between legs\n' +
+        '  - Hedge ratio from OLS on log prices (hedgeRatio)\n' +
+        '  - Spread z-score (spreadZ) and spread volatility (spreadVol = std dev of log spread)\n' +
+        '  - Log price ratio z-score over a recent window (ratioZ)\n' +
+        '  - Cointegration stats: ADF test statistic, approximate p-value, half-life, stationarity flag\n' +
+        '  - Net funding carry for a dollar-neutral pair (fundingNet)\n' +
+        '  - Asset scores (scores.long, scores.short, scores.composite)\n' +
+        '  - Sector/ecosystem/type classification\n' +
+        '  - Technical indicators: rsiDivergence, volumeConfirmation, regimeScore, adxTrend, volumeTrend\n\n' +
         '## Core Rules\n\n' +
         '1. **Statistical Thresholds**:\n' +
-        '   - Correlation ≥ 0.7\n' +
-        '   - ADF t-statistic ≤ -1.645 (90% significance)\n' +
-        '   - Half-life ≤ 40 periods (pairs list shows periods; state uses hours)\n' +
-        '   - |Spread Z-score| ≥ 0.8\n\n' +
+        '   - Correlation: prefer corr ≥ 0.7 (minimum corr uses PAIRS_MIN_CORR, default 0.6)\n' +
+        '   - Stationarity: ADF p-value ≤ 0.10 (PAIRS_MAX_ADF_P) and isStationary=true\n' +
+        '   - Half-life: ≤ 40 periods (PAIRS_MAX_HALFLIFE_DAYS; pairs list shows periods, state uses hours)\n' +
+        '   - Spread dislocation: |spreadZ| ≥ 0.8 at entry; |spreadZ| ≥ 1.5 is a strong signal\n' +
+        '   - Ratio dislocation: |ratioZ| ≥ 0.8 preferred; |ratioZ| ≥ 1.5 indicates a strong relative mispricing over the recent window\n\n' +
         '2. **Position Limits**:\n' +
         '   - Maximum 10 pairs (20 positions) concurrently\n' +
         '   - Minimum margin: $100 available\n' +
         '   - Symbol Isolation: No symbol can appear in more than one active pair\n\n' +
         '## Position Sizing\n\n' +
-        '- **Base Allocation**: Long position = 15-25% of availableMarginUsd (increase with leverage)\n' +
+        '- **Base Allocation**: Target 15-25% of availableMarginUsd per new pair before leverage, adjusted by signal strength and spread volatility.\n' +
         '- **Margin Limits per Position**: $500-$1000 margin per position (20 positions max)\n' +
         '  - **Minimum**: $500 margin per position (notional $500-2500 depending on leverage)\n' +
         '  - **Maximum**: $1000 margin per position (notional $1000-5000 depending on leverage)\n' +
         '- **Leverage Selection**: Choose 1x-5x based on pair quality and risk tolerance\n' +
-        '  - **High Quality**: 3x-5x leverage (strong cointegration, |spreadZ| > 2.0)\n' +
-        '  - **Medium Quality**: 2x-3x leverage (|spreadZ| 1.5-2.0)\n' +
-        '  - **Conservative**: 1x-2x leverage (new entries, uncertain conditions)\n' +
-        '- **Volatility Adjustment**: Scale down leverage for high volatility pairs\n' +
-        '- **Beta Adjustment**: Short position = Long position × beta (for market neutrality)\n' +
-        '- **Margin Efficiency**: Higher leverage reduces required margin per position\n' +
-        '- **Fallback**: If beta is null/undefined, use equal sizing\n' +
-        '- **Minimum Size**: $50 USD per leg (pre-leverage notional)\n' +
-        '- **Example**: With 3x leverage, beta = 0.8, long = $2000 → short = $1600, margin = $667\n\n' +
+        '  - **High Quality**: 3x-5x leverage (strong cointegration, |spreadZ| > 2.0 and |ratioZ| > 1.5)\n' +
+        '  - **Medium Quality**: 2x-3x leverage (|spreadZ| 1.5-2.0 or |ratioZ| 1.0-1.5)\n' +
+        '  - **Conservative**: 1x-2x leverage (new entries, lower conviction, or high spreadVol)\n' +
+        '- **Spread-Volatility Adjustment**:\n' +
+        '  - Estimate spreadVol as the standard deviation of the log spread series.\n' +
+        '  - Scale notional **inversely** with spreadVol: safer pairs (lower spreadVol) can take larger notional; noisy pairs (higher spreadVol) must take smaller notional.\n' +
+        '  - Example: if spreadVol is twice as large for pair B vs pair A, size pair B at roughly half the notional of A, all else equal.\n' +
+        '- **Beta / Hedge Adjustment**:\n' +
+        '  - Keep the pair approximately dollar-neutral using beta/hedgeRatio.\n' +
+        '  - For a chosen long notional N_long, set short notional N_short ≈ N_long × beta (or hedgeRatio for log-spread-based hedging).\n' +
+        '- **Margin Efficiency**: Higher leverage reduces required margin per position, but also increases risk; use leverage primarily to adjust margin usage, not to chase excessive size.\n' +
+        '- **Fallback**: If beta or hedgeRatio is null/undefined, default to equal dollar sizing on both legs.\n' +
+        '- **Minimum Size**: $50 USD per leg (pre-leverage notional).\n' +
+        '- **Example**: With 3x leverage, beta = 0.8, long notional = $2000 → short notional ≈ $1600, margin ≈ $667 (before fees).\n\n' +
         '## Social Sentiment Analysis\n\n' +
         'You have access to live search capabilities for real-time social sentiment analysis. Use this to enhance your quantitative decisions with qualitative market insights.\n\n' +
         '**Search Guidelines:**\n' +
@@ -116,7 +131,7 @@ export function getSystemPrompt(): string {
         '{\n' +
         '  "summary": string,\n' +
         '  "mode": "PAIR",\n' +
-        '  "pair"?: {"long": string, "short": string, "corr"?: number, "beta"?: number, "spreadZ"?: number, "adfT"?: number, "halfLife"?: number, "fundingNet"?: number},\n' +
+        '  "pair"?: {"long": string, "short": string, "corr"?: number, "beta"?: number, "spreadZ"?: number, "ratioZ"?: number, "spreadVol"?: number, "adfT"?: number, "halfLife"?: number, "fundingNet"?: number},\n' +
         '  "signal": "ENTER" | "EXIT" | "REDUCE" | "NONE",\n' +
         '  "sizing"?: {"longSizeUsd": number, "shortSizeUsd": number, "leverage": number},\n' +
         '  "risk"?: {"profitTargetZ": number, "reduceAtPnlUsd": number, "stopLossPnlUsd": number, "timeStopHours": number, "maxDurationHours"?: number},\n' +
