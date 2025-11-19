@@ -140,6 +140,7 @@ export class Orchestrator {
             const { SqliteRepo } = await import('../services/sqliteRepo.js');
             const repo = new SqliteRepo(await getDb());
             pairBaselines = repo.getActivePairsBaseline();
+            this.log('loaded %d baselines from SQL. Keys: %o', Object.keys(pairBaselines).length, Object.keys(pairBaselines));
         } catch { }
 
         // Derive active pair performance from current open positions and latest pair stats
@@ -249,6 +250,10 @@ export class Orchestrator {
                 const canonicalKey = createCanonicalPairKey(longSymbol, shortSymbol);
                 if (processedPairs.has(canonicalKey)) continue;
                 processedPairs.add(canonicalKey);
+
+                // Debug baseline lookup
+                const hasBaseline = canonicalKey in pairBaselines;
+                this.log('processing %s (canonical: %s) - baseline found? %s', `${longSymbol}/${shortSymbol}`, canonicalKey, hasBaseline);
 
                 const longPos = positionBySymbol.get(longSymbol);
                 const shortPos = positionBySymbol.get(shortSymbol);
