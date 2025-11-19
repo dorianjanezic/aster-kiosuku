@@ -129,11 +129,11 @@ export function getUserPrompt(args: { account: SimAccount; positions: SimPositio
                 const sZAbs = Math.abs(sZ);
                 const ratioZ = Number(((p as any).ratioZ || 0));
                 const spreadVol = (p as any).spreadVol;
-                const suggLong = sZ > 0 ? p.short : p.long; // positive Z -> short long-leg, long short-leg
-                const suggShort = sZ > 0 ? p.long : p.short;
+                // Backend assigns long/short correctly based on spreadZ direction
+                // p.long is the asset to BUY, p.short is the asset to SELL
                 return `    ${i + 1}. ${p.long}/${p.short} (${p.sector || p.ecosystem || 'Unknown'})\n` +
                     `       Stats: corr=${p.corr?.toFixed(3)}, beta=${p.beta?.toFixed(3) || 'null'}, adfT=${((p as any).cointegration?.adfT || 0)?.toFixed(2)}, halfLifePeriods=${((p as any).cointegration?.halfLife || 0)?.toFixed(1)}p, spreadZSigned=${sZ.toFixed(2)}, |spreadZ|=${sZAbs.toFixed(2)}, ratioZ=${ratioZ.toFixed(2)}, spreadVol=${spreadVol != null ? spreadVol.toFixed(4) : 'null'}, fundingNet=${((p as any).fundingNet || 0)?.toFixed(6)}\n` +
-                    `       Direction: long ${suggLong}, short ${suggShort}\n` +
+                    `       Direction: long ${p.long}, short ${p.short}\n` +
                     `       Technical: rsiDiv=${tech.rsiDivergence?.toFixed(2) || 'null'}, volConf=${tech.volumeConfirmation?.toFixed(2) || 'null'}, regime=${tech.regimeScore?.toFixed(2) || 'null'}, adx=${tech.adxTrend?.toFixed(1) || 'null'}\n` +
                     `       Scores: long=${scores.long?.toFixed(2) || 'null'}, short=${scores.short?.toFixed(2) || 'null'}, composite=${scores.composite?.toFixed(2) || 'null'}\n` +
                     `       Quality: ${p.qualityScore}\n`;
