@@ -160,6 +160,7 @@ export function getUserPrompt(args: { account: SimAccount; positions: SimPositio
             pnlUsd: Number(ap.pnlUsd.toFixed(2)),
             spreadZSigned: Number((ap.spreadZ || 0).toFixed(2)),
             spreadZAbs: Number(Math.abs(ap.spreadZ || 0).toFixed(2)),
+            // deltaSpreadZ: positive = converging (good), negative = diverging (bad)
             deltaSpreadZ: ap.deltaSpreadZ != null ? Number(ap.deltaSpreadZ.toFixed(3)) : null,
             halfLifeHours: (ap as any).halfLife || null,
             elapsedHours: (ap as any).elapsedMs ? ((ap as any).elapsedMs / (1000 * 60 * 60)) : 0,
@@ -171,6 +172,7 @@ export function getUserPrompt(args: { account: SimAccount; positions: SimPositio
             entrySpreadZ: (ap as any).entrySpreadZ ?? null,
             entryHalfLifeHours: (ap as any).entryHalfLife ?? null,
             entryTime: (ap as any).entryTime ?? null,
+            // deltaHalfLife: positive = faster reversion (good), negative = slower (bad)
             deltaHalfLife: (ap as any).deltaHalfLife ?? null
         }));
 

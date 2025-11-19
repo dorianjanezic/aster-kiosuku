@@ -27,6 +27,7 @@ import { updateMarketsBuckets } from '../lib/buckets.js';
 import { StateService } from '../services/stateService.js';
 import type { SimPosition } from '../services/stateService.js';
 import { pctChanges, pearson, betaYOnX } from '../lib/stats.js';
+import { createCanonicalPairKey } from '../lib/pairUtils.js';
 
 export class Orchestrator {
     private provider: LLMProvider;
@@ -145,13 +146,13 @@ export class Orchestrator {
         const activePairs: Array<{ long: string; short: string; pnlUsd: number; spreadZ?: number; halfLife?: number | null; entrySpreadZ?: number; deltaSpreadZ?: number; entryHalfLife?: number | null; deltaHalfLife?: number | null; entryTime?: number; elapsedMs?: number }> = [];
         try {
             // Build map of current pair statistics from latest pair data
+            // Use canonical keys to ensure we find stats regardless of current direction
             const pairStatsMap = new Map<string, { spreadZ?: number; halfLife?: number | null }>();
-            const createPairKey = (a: string, b: string) => `${a}|${b}`;
 
-            // Add stats from current pairs
+            // Add stats from current pairs using canonical keys
             for (const p of pairs) {
-                const pairKey = createPairKey(p.long, p.short);
-                pairStatsMap.set(pairKey, {
+                const canonicalKey = createCanonicalPairKey(p.long, p.short);
+                pairStatsMap.set(canonicalKey, {
                     spreadZ: (p as any)?.spreadZ,
                     halfLife: (p as any)?.cointegration?.halfLife ?? null
                 });
@@ -175,24 +176,68 @@ export class Orchestrator {
             } catch { }
 
             if (authoritativePairs.length === 0) {
+                // Bootstrap from open positions
+                // Try to match positions with pairs from the current pairs snapshot to ensure structural validity
                 const longs = positions.filter(p => p.direction === 'LONG').map(p => p.symbol);
                 const shorts = positions.filter(p => p.direction === 'SHORT').map(p => p.symbol);
                 const used = new Set<string>();
-                for (const lo of longs) {
-                    if (used.has(lo)) continue;
-                    const sh = shorts.find(s => !used.has(s));
-                    if (!sh) continue;
-                    const id = createPairKey(lo, sh);
+
+                // First, try to match with existing pairs from the snapshot
+                for (const pair of pairs) {
+                    const hasLong = longs.includes(pair.long) && !used.has(pair.long);
+                    const hasShort = shorts.includes(pair.short) && !used.has(pair.short);
+
+                    if (hasLong && hasShort) {
+                        const canonicalKey = createCanonicalPairKey(pair.long, pair.short);
+                        authoritativePairs.push({ long: pair.long, short: pair.short, entryTime: Date.now() });
+                        used.add(pair.long);
+                        used.add(pair.short);
+
+                        // Bootstrap to SQL
+                        try {
+                            const { getDb } = await import('../db/sqlite.js');
+                            const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                            const repo = new SqliteRepo(await getDb());
+                            const stats = pairStatsMap.get(canonicalKey) || null;
+                            repo.upsertActivePair(canonicalKey, pair.long, pair.short, {
+                                time: Date.now(),
+                                spreadZ: (stats as any)?.spreadZ ?? null,
+                                halfLife: (stats as any)?.halfLife ?? null
+                            });
+                            pairBaselines[canonicalKey] = {
+                                entryTime: Date.now(),
+                                entrySpreadZ: (stats as any)?.spreadZ ?? undefined,
+                                entryHalfLife: (stats as any)?.halfLife ?? null
+                            } as any;
+                        } catch { }
+                    }
+                }
+
+                // Fallback: arbitrarily pair remaining unmatched positions (last resort)
+                // This should rarely happen if pairs snapshot is recent
+                const remainingLongs = longs.filter(s => !used.has(s));
+                const remainingShorts = shorts.filter(s => !used.has(s));
+                for (let i = 0; i < Math.min(remainingLongs.length, remainingShorts.length); i++) {
+                    const lo = remainingLongs[i]!;
+                    const sh = remainingShorts[i]!;
+                    const canonicalKey = createCanonicalPairKey(lo, sh);
                     authoritativePairs.push({ long: lo, short: sh, entryTime: Date.now() });
-                    used.add(lo); used.add(sh);
-                    // bootstrap to SQL baseline
+
                     try {
                         const { getDb } = await import('../db/sqlite.js');
                         const { SqliteRepo } = await import('../services/sqliteRepo.js');
                         const repo = new SqliteRepo(await getDb());
-                        const stats = pairStatsMap.get(id) || null;
-                        repo.upsertActivePair(id, lo, sh, { time: Date.now(), spreadZ: (stats as any)?.spreadZ ?? null, halfLife: (stats as any)?.halfLife ?? null });
-                        pairBaselines[id] = { entryTime: Date.now(), entrySpreadZ: (stats as any)?.spreadZ ?? undefined, entryHalfLife: (stats as any)?.halfLife ?? null } as any;
+                        const stats = pairStatsMap.get(canonicalKey) || null;
+                        repo.upsertActivePair(canonicalKey, lo, sh, {
+                            time: Date.now(),
+                            spreadZ: (stats as any)?.spreadZ ?? null,
+                            halfLife: (stats as any)?.halfLife ?? null
+                        });
+                        pairBaselines[canonicalKey] = {
+                            entryTime: Date.now(),
+                            entrySpreadZ: (stats as any)?.spreadZ ?? undefined,
+                            entryHalfLife: (stats as any)?.halfLife ?? null
+                        } as any;
                     } catch { }
                 }
             }
@@ -201,22 +246,22 @@ export class Orchestrator {
             for (const ap of authoritativePairs) {
                 const longSymbol = ap.long;
                 const shortSymbol = ap.short;
-                const pairId = createPairKey(longSymbol, shortSymbol);
-                if (processedPairs.has(pairId)) continue;
-                processedPairs.add(pairId);
+                const canonicalKey = createCanonicalPairKey(longSymbol, shortSymbol);
+                if (processedPairs.has(canonicalKey)) continue;
+                processedPairs.add(canonicalKey);
 
-                const baseline = pairBaselines[pairId];
+                const baseline = pairBaselines[canonicalKey];
                 const longPos = positionBySymbol.get(longSymbol);
                 const shortPos = positionBySymbol.get(shortSymbol);
                 if (!longPos || !shortPos) continue;
 
-                let currentStats = pairStatsMap.get(pairId);
+                let currentStats = pairStatsMap.get(canonicalKey);
                 if (!currentStats) {
                     try {
                         const { getDb } = await import('../db/sqlite.js');
                         const { SqliteRepo } = await import('../services/sqliteRepo.js');
                         const repo = new SqliteRepo(await getDb());
-                        const hist = repo.getLatestPairHistory(pairId);
+                        const hist = repo.getLatestPairHistory(canonicalKey);
                         if (hist && (hist.spreadZ != null || hist.halfLife != null)) {
                             currentStats = { spreadZ: hist.spreadZ ?? undefined, halfLife: hist.halfLife ?? null } as any;
                         } else {
@@ -230,13 +275,20 @@ export class Orchestrator {
 
                 const pnlUsd = (longPos.unrealizedPnl ?? 0) + (shortPos.unrealizedPnl ?? 0);
                 const entrySpreadZ = baseline?.entrySpreadZ;
+
+                // Convergence-aware delta: positive = converging toward zero, negative = diverging
+                // For mean-reversion trades, we want to track movement toward spreadZ = 0
                 const deltaSpreadZ = (typeof currentStats?.spreadZ === 'number' && typeof entrySpreadZ === 'number')
-                    ? (currentStats.spreadZ - entrySpreadZ)
+                    ? (Math.abs(entrySpreadZ) - Math.abs(currentStats.spreadZ))  // Positive = good (converging)
                     : undefined;
+
                 const entryHalfLife = baseline?.entryHalfLife;
                 const currentHalfLife = currentStats?.halfLife ?? null;
+
+                // Delta half-life: negative = faster reversion (good), positive = slower reversion (bad)
+                // We flip the sign to make it intuitive: positive = improvement
                 const deltaHalfLife = (entryHalfLife != null && currentHalfLife != null)
-                    ? (currentHalfLife - entryHalfLife)
+                    ? (entryHalfLife - currentHalfLife)  // Positive = faster reversion (good)
                     : null;
                 const elapsedMs = (baseline && typeof baseline.entryTime === 'number')
                     ? (Date.now() - baseline.entryTime)
@@ -309,8 +361,7 @@ export class Orchestrator {
             const { SqliteRepo } = await import('../services/sqliteRepo.js');
             const repo = new SqliteRepo(await getDb());
             for (const ap of activePairs) {
-                const id = `${ap.long}|${ap.short}`;
-                repo.insertPairHistory(id, {
+                repo.insertPairHistory(ap.long, ap.short, {
                     ts: Date.now(),
                     spreadZ: ap.spreadZ ?? null,
                     halfLife: ap.halfLife ?? null,
@@ -334,8 +385,9 @@ export class Orchestrator {
             const t = e?.type;
             const long = e?.data?.pair?.long; const short = e?.data?.pair?.short;
             if (t === 'pair_exit' && long && short) {
-                recentExitPairs.add(`${long}|${short}`);
-                recentExitPairs.add(`${short}|${long}`);
+                // Use canonical key to ensure cooldown works regardless of direction
+                const canonicalKey = createCanonicalPairKey(long, short);
+                recentExitPairs.add(canonicalKey);
             }
         }
 
@@ -349,11 +401,12 @@ export class Orchestrator {
         });
 
         const applyCooldown = positions.length > 0; // if no positions, ignore cooldown to surface candidates
-        let eligible = sortedPairs.filter(p =>
-            !usedSymbols.has(p.long) &&
-            !usedSymbols.has(p.short) &&
-            (applyCooldown ? !recentExitPairs.has(`${p.long}|${p.short}`) : true)
-        );
+        let eligible = sortedPairs.filter(p => {
+            const canonicalKey = createCanonicalPairKey(p.long, p.short);
+            return !usedSymbols.has(p.long) &&
+                !usedSymbols.has(p.short) &&
+                (applyCooldown ? !recentExitPairs.has(canonicalKey) : true);
+        });
         // Fallback: if nothing survives filters, use the sorted list to ensure the agent sees opportunities
         if (eligible.length === 0) {
             eligible = sortedPairs;
@@ -452,14 +505,23 @@ export class Orchestrator {
                 const usedSymbols = new Set<string>(currentPairs.flatMap(p => [p.long, p.short]));
                 const symbolOverlaps = usedSymbols.has(parsed.pair.long) || usedSymbols.has(parsed.pair.short);
 
-                // Check for inverse pairs (A/B when B/A already exists)
-                const inverseExists = currentPairs.some(p =>
-                    (p.long === parsed.pair.short && p.short === parsed.pair.long)
-                );
+                // Check if this pair (or its inverse) already exists using canonical keys
+                let pairExistsReason: string | null = null;
+                try {
+                    const { getDb } = await import('../db/sqlite.js');
+                    const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                    const repo = new SqliteRepo(await getDb());
+                    const existing = repo.getActivePairIfExists(parsed.pair.long, parsed.pair.short);
+                    if (existing) {
+                        pairExistsReason = 'pair_already_open';
+                        this.log('pair entry blocked: %s/%s already exists as %s (direction: %s)',
+                            parsed.pair.long, parsed.pair.short, existing.pairKey, existing.direction);
+                    }
+                } catch { }
 
-                if (!hasCapacity || symbolOverlaps || inverseExists) {
+                if (!hasCapacity || symbolOverlaps || pairExistsReason) {
                     const reason = !hasCapacity ? 'capacity_reached' :
-                        inverseExists ? 'inverse_pair_exists' :
+                        pairExistsReason ? pairExistsReason :
                             'symbol_overlap';
                     await ordersLedger.append('enter_blocked', { reason, maxPairs, currentPairs: currentPairs.length, pair: parsed.pair });
                     return;
@@ -573,12 +635,11 @@ export class Orchestrator {
                     const { getDb } = await import('../db/sqlite.js');
                     const { SqliteRepo } = await import('../services/sqliteRepo.js');
                     const repo = new SqliteRepo(await getDb());
-                    const id = `${pair.long}|${pair.short}`;
                     const entrySpreadZ = parsed?.pair?.spreadZ;
                     const entryHalfLife = parsed?.pair?.halfLife ?? null;
                     const nowTs = Date.now();
-                    repo.upsertActivePair(id, pair.long, pair.short, { time: nowTs, spreadZ: entrySpreadZ ?? null, halfLife: entryHalfLife ?? null });
-                    repo.insertPairHistory(id, {
+                    repo.upsertActivePair('unused', pair.long, pair.short, { time: nowTs, spreadZ: entrySpreadZ ?? null, halfLife: entryHalfLife ?? null });
+                    repo.insertPairHistory(pair.long, pair.short, {
                         ts: nowTs,
                         spreadZ: entrySpreadZ ?? null,
                         halfLife: entryHalfLife ?? null,
@@ -661,8 +722,7 @@ export class Orchestrator {
                         const { getDb } = await import('../db/sqlite.js');
                         const { SqliteRepo } = await import('../services/sqliteRepo.js');
                         const repo = new SqliteRepo(await getDb());
-                        const id = `${pair.long}|${pair.short}`;
-                        repo.addRealizedToActivePair(id, realized);
+                        repo.addRealizedToActivePair(pair.long, pair.short, realized);
                     } catch { }
                     this.log('REDUCE signal processed for pair %s/%s - positions reduced by 50%, realized PnL: $%s (leverage: %sx)', pair.long, pair.short, realized.toFixed(2), positionLeverage);
                 } catch (e) {
@@ -700,8 +760,7 @@ export class Orchestrator {
                         const { getDb } = await import('../db/sqlite.js');
                         const { SqliteRepo } = await import('../services/sqliteRepo.js');
                         const repo = new SqliteRepo(await getDb());
-                        const id = `${pair.long}|${pair.short}`;
-                        repo.closeActivePair(id, realized);
+                        repo.closeActivePair(pair.long, pair.short, realized);
                     } catch { }
                 } catch { /* ignore */ }
             }

@@ -289,23 +289,20 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
         const bottomRaw = ranked.slice(-Math.min(sideCandidates, ranked.length)).reverse();
 
         // Selection of candidate sides
-        // If filters are disabled, use all ranked candidates on both sides
-        let top = noFilters ? topRaw : topRaw.filter(r => (r.rsi ?? 50) >= 55);
-        let bottom = noFilters ? bottomRaw : bottomRaw.filter(r => (r.rsi ?? 50) <= 45);
+        // Separation of Selection and Timing:
+        // We relax the strict RSI gates (>55 / <45) to identify structurally cointegrated pairs
+        // even if they are not currently at extreme RSI levels.
+        // The ranking (which includes RSI score) still naturally biases top/bottom selection.
+        let top = topRaw; 
+        let bottom = bottomRaw;
 
+        // If we still want to ensure some minimal separation, we can use very loose bounds or just rely on ranking.
+        // For "noFilters", we use raw. For default, we essentially do the same but might log.
         if (!noFilters) {
-            // If RSI filtering is too restrictive, gradually relax the criteria
-            if (!top.length || !bottom.length) {
-                log('group %s[%s]: RSI gates restrictive (top=%d, bottom=%d). Relaxing criteria.', tag, groupKey, top.length, bottom.length);
-                top = topRaw.filter(r => (r.rsi ?? 50) >= 50);
-                bottom = bottomRaw.filter(r => (r.rsi ?? 50) <= 50);
-            }
-
-            if (!top.length || !bottom.length) {
-                log('group %s[%s]: RSI gates still empty (top=%d, bottom=%d). Using score-only selection.', tag, groupKey, top.length, bottom.length);
-                top = topRaw;
-                bottom = bottomRaw;
-            }
+             // Previously: top = topRaw.filter(r => r.rsi >= 55);
+             // Now: we accept all top ranked candidates as potential short legs
+             // and all bottom ranked as potential long legs.
+             // Logic matches "Selection first, Timing later"
         }
 
         // Ensure we have at least one candidate from each side
@@ -462,10 +459,21 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                     const logPricesA = logPrices(pricesA);
                     const logPricesB = logPrices(pricesB);
 
+                    // Rolling Beta / Hedge Ratio Calculation
+                    // Use a shorter, recent window (e.g. 30 days) for OLS to capture the current structural relationship
+                    // rather than a long-term average which may be invalid if the relationship has drifted.
+                    const barsPerDay = getBarsPerDay(process.env.PAIRS_INTERVAL || '1h');
+                    const hedgeLookbackDays = 30;
+                    const hedgeLookbackBars = Math.floor(hedgeLookbackDays * barsPerDay);
+                    
+                    // Slice the series to the recent window for OLS and Spread calculation
+                    const hedgeLogA = logPricesA.slice(-Math.min(logPricesA.length, hedgeLookbackBars));
+                    const hedgeLogB = logPricesB.slice(-Math.min(logPricesB.length, hedgeLookbackBars));
+
                     // Calculate hedge ratio using proper OLS regression (y = long, x = short)
                     let olsResult;
                     try {
-                        olsResult = olsRegression(logPricesA, logPricesB);
+                        olsResult = olsRegression(hedgeLogA, hedgeLogB);
                     } catch (e) {
                         void ledger.append('invalid_pair', { key, reason: 'ols_regression_error', error: String(e) });
                         continue;
@@ -475,9 +483,10 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                         hedgeRatio = olsResult.slope;
 
                         // Calculate spread: long - hedgeRatio * short
+                        // We calculate spread on the SAME recent window used for OLS to test current stationarity.
                         const spread: number[] = [];
-                        for (let i = 0; i < logPricesA.length && i < logPricesB.length; i++) {
-                            const spreadValue = logPricesA[i]! - hedgeRatio * logPricesB[i]!;
+                        for (let i = 0; i < hedgeLogA.length && i < hedgeLogB.length; i++) {
+                            const spreadValue = hedgeLogA[i]! - hedgeRatio * hedgeLogB[i]!;
                             if (Number.isFinite(spreadValue)) {
                                 spread.push(spreadValue);
                             }
@@ -625,25 +634,37 @@ export async function buildPairCandidates(marketsPath = 'sim_data/markets.json',
                 const secHi = (hi.t as any)?.categories?.sector as (string | undefined);
                 const combinedSector = (secLo && secHi) ? (secLo === secHi ? secLo : `${secLo}/${secHi}`) : (secLo || secHi);
 
+                // FIX: Assign long/short based on spreadZ direction for correct mean-reversion trades
+                // Spread = log(A) - hedgeRatio * log(B)
+                // If spreadZ > 0: spread is HIGH → short A (overvalued), long B (undervalued)
+                // If spreadZ < 0: spread is LOW → long A (undervalued), short B (overvalued)
+                const currentSpreadZ = spreadZ ?? 0;
+                const actualLong = currentSpreadZ > 0 ? hi.t.symbol : lo.t.symbol;
+                const actualShort = currentSpreadZ > 0 ? lo.t.symbol : hi.t.symbol;
+                const actualLongSector = currentSpreadZ > 0 ? secHi : secLo;
+                const actualShortSector = currentSpreadZ > 0 ? secLo : secHi;
+                const actualLongScore = currentSpreadZ > 0 ? hs : ls;
+                const actualShortScore = currentSpreadZ > 0 ? ls : hs;
+
                 const base: Partial<PairCandidate> = {
-                    long: lo.t.symbol,
-                    short: hi.t.symbol,
+                    long: actualLong,
+                    short: actualShort,
                     corr: corr ?? 0,
                     beta: beta ?? 1,
                     hedgeRatio,
                     cointegration: (hedgeRatio != null) ? { adfT, p: adfP, lags: 0, halfLife, stationary } : undefined,
-                    spreadZ: spreadZ ?? 0,
+                    spreadZ: currentSpreadZ,
                     spreadVol: spreadVol ?? undefined,
                     ratioZ: ratioZ ?? 0,
                     fundingNet,
                     technicals: enhancedTech, // Add enhanced technical indicators
-                    scores: { long: ls, short: hs, composite },
-                    notes: ['enhanced-scores', `corr:${corr?.toFixed(3)}`, `beta:${beta?.toFixed(3)}`, `spreadZ:${spreadZ?.toFixed(2)}`, `ratioZ:${(ratioZ ?? 0).toFixed(2)}`, `adfT:${adfT?.toFixed(2)}`, `rsiDiv:${enhancedTech.rsiDivergence?.toFixed(2)}`, `regime:${enhancedTech.regimeScore?.toFixed(2)}`],
+                    scores: { long: actualLongScore, short: actualShortScore, composite },
+                    notes: ['enhanced-scores', `corr:${corr?.toFixed(3)}`, `beta:${beta?.toFixed(3)}`, `spreadZ:${currentSpreadZ.toFixed(2)}`, `ratioZ:${(ratioZ ?? 0).toFixed(2)}`, `adfT:${adfT?.toFixed(2)}`, `rsiDiv:${enhancedTech.rsiDivergence?.toFixed(2)}`, `regime:${enhancedTech.regimeScore?.toFixed(2)}`],
                     sector: combinedSector as any,
                     // Provide leg-level categories to consumers that want to render both
                     // (frontends use passthrough schemas so extra fields are fine)
-                    longSector: secLo as any,
-                    shortSector: secHi as any
+                    longSector: actualLongSector as any,
+                    shortSector: actualShortSector as any
                 } as any;
                 if (relaxed) (base as any).notes.push('relaxed-filter');
                 if (tag === 'sector') (base as any).sector = groupKey;

@@ -29,7 +29,9 @@ export function getSystemPrompt(): string {
         '- Open Positions: symbol, direction, entryPrice, qty, unrealizedPnl, leverage\n' +
         '- State JSON: activePairs with pnlUsd, spreadZ, halfLifeHours (hours), entrySpreadZ, deltaSpreadZ, entryHalfLifeHours (hours), deltaHalfLife, convergencePct, exitSignals\n' +
         '  - Convergence Metrics:\n' +
-        '    - convergencePct: (|entrySpreadZ| - |currentSpreadZ|) / |entrySpreadZ|, clamped to [0,1]\n' +
+        '    - deltaSpreadZ: |entrySpreadZ| - |currentSpreadZ|. Positive = converging toward zero (good), negative = diverging (bad)\n' +
+        '    - deltaHalfLife: entryHalfLife - currentHalfLife. Positive = faster mean-reversion (good), negative = slower (bad)\n' +
+        '    - convergencePct: (|entrySpreadZ| - |currentSpreadZ|) / |entrySpreadZ|, clamped to [0,1]. 0 = no convergence, 1 = fully converged\n' +
         '    - convergenceToTargetPct: progress toward |spreadZ| ≤ 0.5 using (|entryZ| - max(|currentZ|, 0.5)) / (|entryZ| - 0.5), clamped\n' +
         '    - remainingToTargetZ: max(|currentSpreadZ| - 0.5, 0)\n' +
         '    - elapsedHalfLives: elapsedHours / halfLifeHours (when halfLifeHours > 0)\n' +

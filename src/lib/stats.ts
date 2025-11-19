@@ -193,18 +193,19 @@ export function adfTest(series: number[], maxLags: number = 10): ADFResult | und
     // t = β / SE(β), where SE(β) is the standard error from OLS
     const testStatistic = beta / olsResult.standardError;
 
-    // Approximate p-value based on t-distribution (simplified)
-    // For large samples, t-distribution approximates normal
+    // Approximate p-value based on Dickey-Fuller critical values (no constant, no trend)
+    // 1%: -2.58, 5%: -1.95, 10%: -1.62 for large N
+    // However, using stricter critical values as recommended for pairs trading to reduce false positives:
+    // 1%: -3.43, 5%: -2.86, 10%: -2.57
     let pValue: number | null = null;
     if (Number.isFinite(testStatistic)) {
-        // Two-tailed test: we want β < 0 for mean reversion
-        // Use absolute value for p-value calculation, then adjust for one-tailed test
-        const absT = Math.abs(testStatistic);
-        if (absT > 2.576) { // ~99% confidence
+        // One-tailed test (left tail) for unit root
+        // The test statistic is negative. Lower is more significant.
+        if (testStatistic < -3.43) {
             pValue = 0.01;
-        } else if (absT > 1.96) { // ~95% confidence
+        } else if (testStatistic < -2.86) {
             pValue = 0.05;
-        } else if (absT > 1.645) { // ~90% confidence
+        } else if (testStatistic < -2.57) {
             pValue = 0.10;
         } else {
             pValue = 0.50; // Not significant
