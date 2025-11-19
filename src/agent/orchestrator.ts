@@ -250,11 +250,11 @@ export class Orchestrator {
                 if (processedPairs.has(canonicalKey)) continue;
                 processedPairs.add(canonicalKey);
 
-                const baseline = pairBaselines[canonicalKey];
                 const longPos = positionBySymbol.get(longSymbol);
                 const shortPos = positionBySymbol.get(shortSymbol);
                 if (!longPos || !shortPos) continue;
 
+                // 1. Resolve current stats (from map or history) FIRST
                 let currentStats = pairStatsMap.get(canonicalKey);
                 if (!currentStats) {
                     try {
@@ -271,6 +271,30 @@ export class Orchestrator {
                             }
                         }
                     } catch { }
+                }
+
+                // 2. Check baseline and self-heal if needed using resolved currentStats
+                let baseline = pairBaselines[canonicalKey];
+                if ((!baseline || typeof baseline.entrySpreadZ !== 'number') && currentStats?.spreadZ != null) {
+                    this.log('healing missing baseline for %s using current stats (Z=%s)', canonicalKey, currentStats.spreadZ);
+                    baseline = {
+                        entryTime: Date.now(),
+                        entrySpreadZ: currentStats.spreadZ,
+                        entryHalfLife: currentStats.halfLife ?? null
+                    };
+                    try {
+                        const { getDb } = await import('../db/sqlite.js');
+                        const { SqliteRepo } = await import('../services/sqliteRepo.js');
+                        const repo = new SqliteRepo(await getDb());
+                        repo.upsertActivePair(canonicalKey, longSymbol, shortSymbol, {
+                            time: baseline.entryTime,
+                            spreadZ: baseline.entrySpreadZ,
+                            halfLife: baseline.entryHalfLife
+                        });
+                        pairBaselines[canonicalKey] = baseline;
+                    } catch (e) {
+                        this.log('failed to persist healed baseline: %o', e);
+                    }
                 }
 
                 const pnlUsd = (longPos.unrealizedPnl ?? 0) + (shortPos.unrealizedPnl ?? 0);
