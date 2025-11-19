@@ -286,17 +286,13 @@ export default function PairsPage() {
                             </thead>
                             <tbody>
                                 {filteredAndSortedPairs.map((p) => {
-                                    const swapped = p.spreadZ > 0
-                                    const dispLong = swapped ? p.short : p.long
-                                    const dispShort = swapped ? p.long : p.short
-                                    const displayedZ = Math.abs(swapped ? -p.spreadZ : p.spreadZ)
+                                    // Backend now assigns long/short correctly based on spreadZ direction
+                                    // No need to swap - display labels as they come from the API
+                                    const dispLong = p.long
+                                    const dispShort = p.short
+                                    const displayedZ = Math.abs(p.spreadZ)
                                     const ratioZAbs = p.ratioZ != null ? Math.abs(p.ratioZ) : null
-                                    const displayedSector = (() => {
-                                        if (!p.sector) return 'Unknown'
-                                        const parts = String(p.sector).split('/')
-                                        if (parts.length !== 2) return p.sector
-                                        return swapped ? `${parts[1]}/${parts[0]}` : p.sector
-                                    })()
+                                    const displayedSector = p.sector || 'Unknown'
                                     return (
                                         <tr key={`${p.long}|${p.short}`} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                                             <td className="px-4 py-3 font-medium">
