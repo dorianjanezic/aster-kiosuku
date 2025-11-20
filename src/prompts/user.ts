@@ -18,7 +18,7 @@
 import type { SimAccount, SimPosition } from '../services/stateService.js';
 import { formatDurationMs, hoursFromMs, intervalStringToHours } from '../lib/format.js';
 
-export function getUserPrompt(args: { account: SimAccount; positions: SimPosition[]; pairs?: Array<{ sector?: string; ecosystem?: string; assetType?: string; long: string; short: string; corr?: number; beta?: number; scores?: any; spreadZ?: number; cointegration?: { halfLife?: number | null } }>; activePairs?: Array<{ long: string; short: string; pnlUsd: number; spreadZ?: number; halfLife?: number | null; entrySpreadZ?: number; deltaSpreadZ?: number; entryHalfLife?: number | null; deltaHalfLife?: number | null; entryTime?: number; elapsedMs?: number }> }): string {
+export function getUserPrompt(args: { account: SimAccount; positions: SimPosition[]; pairs?: Array<{ sector?: string; ecosystem?: string; assetType?: string; long: string; short: string; corr?: number; beta?: number; scores?: any; spreadZ?: number; cointegration?: { halfLife?: number | null } }>; activePairs?: Array<{ long: string; short: string; pnlUsd: number; spreadZ?: number; halfLife?: number | null; entrySpreadZ?: number; deltaSpreadZ?: number; entryHalfLife?: number | null; deltaHalfLife?: number | null; entryTime?: number; elapsedMs?: number }>; }): string {
     const { account, positions, pairs, activePairs } = args;
     const posLines = positions.length
         ? positions.map(p => `• ${p.symbol} ${p.direction} — entry: ${p.entryPrice}, qty: ${p.qty}, upnl: ${p.unrealizedPnl ?? 0}, lev: ${p.leverage ?? ''}`).join('\n')
@@ -120,7 +120,7 @@ export function getUserPrompt(args: { account: SimAccount; positions: SimPositio
         const topN = Number(process.env.PROMPT_PAIRS_TOP_N || '5');
         const finalList = diversified.slice(0, topN);
 
-        return ('\n  <pairs>\n' +
+        const pairsContent = '\n  <pairs>\n' +
             '    New pair opportunities:\n\n' +
             finalList.map((p, i) => {
                 const tech = (p as any).technicals || {};
@@ -142,7 +142,9 @@ export function getUserPrompt(args: { account: SimAccount; positions: SimPositio
             '    Units: pairs halfLife is in periods; state JSON halfLifeHours/entryHalfLifeHours are hours\n' +
             '    Technical: Prefer positive rsiDivergence, volumeConfirmation, and low ADX (ranging markets)\n' +
             '    Sizing: For similar quality signals, favor lower spreadVol (tighter spreads) with larger notional and higher spreadVol with smaller notional.\n' +
-            '  </pairs>\n');
+            '  </pairs>\n';
+
+        return pairsContent;
     })();
 
     // Build streamlined state JSON for the agent

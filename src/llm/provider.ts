@@ -28,6 +28,7 @@ export interface LLMProvider {
     chatWithTools(messages: ChatMessage[], tools: ToolSchema[], options?: { model?: string; responseFormat?: any; searchParameters?: any }): Promise<{
         assistantText?: string;
         toolCalls?: ToolCall[];
+        citations?: any;
     }>;
     agenticResearch?(prompt: string, options?: { model?: string }): Promise<{
         content?: string;
@@ -38,7 +39,7 @@ export interface LLMProvider {
 }
 
 export class NoopProvider implements LLMProvider {
-    async chatWithTools(): Promise<{ assistantText?: string; toolCalls?: ToolCall[] }> {
+    async chatWithTools(): Promise<{ assistantText?: string; toolCalls?: ToolCall[]; citations?: any }> {
         return { assistantText: 'No LLM provider configured.' };
     }
 }
@@ -96,7 +97,8 @@ export class GrokProvider implements LLMProvider {
             name: tc?.function?.name,
             arguments: safeParseJson(tc?.function?.arguments)
         }));
-        return { assistantText, toolCalls };
+        const citations = json?.citations; // Grok may include citations in the response
+        return { assistantText, toolCalls, citations };
     }
 
     async agenticResearch(prompt: string, options?: { model?: string }) {

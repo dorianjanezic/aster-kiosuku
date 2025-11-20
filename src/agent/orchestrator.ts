@@ -465,28 +465,83 @@ export class Orchestrator {
         const cycleCount = Math.floor(Date.now() / (5 * 60 * 1000)); // 5-minute cycles
         const shouldSearch = cycleCount % 3 === 0; // Search every 3rd cycle (~15 minutes)
 
-        const searchParameters = {
-            mode: shouldSearch ? "auto" : "off", // Only search every few cycles to avoid rate limits
-            return_citations: true,
-            max_search_results: 5, // Reduced from 10 to save costs
-            sources: [
-                { type: "x" } // Focus on X/Twitter for sentiment, skip news/web to reduce API calls
-            ]
-        };
+        // Only create search parameters when search is actually enabled
+        let searchParameters: any = undefined;
+        if (shouldSearch) {
+            // Limit search to recent posts (last 7 days) for relevant, timely sentiment
+            // This ensures we get current market sentiment, not stale historical data
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const fromDate = sevenDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+            searchParameters = {
+                mode: "auto", // When enabled, always use auto mode
+                return_citations: true,
+                max_search_results: 5, // Reduced from 10 to save costs
+                sources: [
+                    {
+                        type: "x", // Focus on X/Twitter for sentiment, skip news/web to reduce API calls
+                        from_date: fromDate // Only posts from last 7 days for current sentiment
+                    }
+                ]
+            };
+        }
+
         try {
             await this.ledger.append('search_invoked', { enabled: shouldSearch, params: searchParameters });
-            this.log('search enabled=%s params=%o', shouldSearch, searchParameters);
+            this.log('search enabled=%s params=%o', shouldSearch, searchParameters || 'none');
         } catch { }
 
         let assistantText: string | undefined;
+        let citations: any = undefined;
+        let toolCalls: any = undefined;
         try {
             const response = await this.provider.chatWithTools(messages, [], {
                 responseFormat: decisionSchema,
-                searchParameters
+                ...(searchParameters ? { searchParameters } : {}) // Only pass search params when they exist
             } as any);
             assistantText = response.assistantText;
+            citations = response.citations;
+            toolCalls = response.toolCalls;
+
+            // Enhanced logging for search and reasoning
             try {
-                await this.ledger.append('search_completed', { enabled: shouldSearch });
+                await this.ledger.append('search_completed', {
+                    enabled: shouldSearch,
+                    citationsCount: shouldSearch ? (citations?.length || 0) : 0,
+                    toolCallsCount: shouldSearch ? (toolCalls?.length || 0) : 0
+                });
+
+                // Only log search details when search was actually enabled
+                if (shouldSearch) {
+                    // Log search tool usage details
+                    if (toolCalls && toolCalls.length > 0) {
+                        this.log('search tool calls: %d', toolCalls.length);
+                        toolCalls.forEach((call: any, idx: number) => {
+                            this.log('tool[%d]: %s with args %o', idx, call?.name || call?.function?.name, call?.arguments || call?.function?.arguments);
+                        });
+                    }
+
+                    // Log citation details for transparency
+                    if (citations && citations.length > 0) {
+                        this.log('citations received: %d items', citations.length);
+                        citations.forEach((citation: any, idx: number) => {
+                            const title = citation?.title || citation?.text || citation?.content || 'Citation';
+                            const url = citation?.url || citation?.source || '';
+                            this.log('citation[%d]: %s%s', idx, title.substring(0, 100), url ? ` (${url})` : '');
+                        });
+                    } else if (toolCalls && toolCalls.length > 0) {
+                        this.log('search completed but no citations returned');
+                    }
+                } else {
+                    // Verify no search artifacts when disabled
+                    if (citations && citations.length > 0) {
+                        this.log('WARNING: Citations present when search was disabled: %d items', citations.length);
+                    }
+                    if (toolCalls && toolCalls.length > 0) {
+                        this.log('WARNING: Tool calls present when search was disabled: %d calls', toolCalls.length);
+                    }
+                }
             } catch { }
         } catch (e) {
             this.log('LLM chat failed: %o', e);
@@ -495,9 +550,15 @@ export class Orchestrator {
             return; // Exit early if LLM fails
         }
 
-        // Log raw assistant output
+        // Log raw assistant output with full context
         try {
-            await this.ledger.append('assistant_raw', { round: 0, content: assistantText });
+            await this.ledger.append('assistant_raw', {
+                round: 0,
+                content: assistantText,
+                citations: shouldSearch ? citations : undefined, // Only include citations if search was enabled
+                toolCalls: shouldSearch ? toolCalls : undefined, // Only include tool calls if search was enabled
+                searchEnabled: shouldSearch
+            });
         } catch (e) {
             this.log('failed to log assistant output: %o', e);
         }
