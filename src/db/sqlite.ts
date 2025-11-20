@@ -62,17 +62,20 @@ CREATE TABLE IF NOT EXISTS cycles (
   data_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_cycles_ts ON cycles(ts);
+CREATE INDEX IF NOT EXISTS idx_cycles_type_ts ON cycles(type, ts);
 
 CREATE TABLE IF NOT EXISTS active_pairs (
   pair_key TEXT PRIMARY KEY,
   long_symbol TEXT NOT NULL,
   short_symbol TEXT NOT NULL,
+  direction TEXT NOT NULL,    -- 'FIRST_LONG' or 'SECOND_LONG'
   entry_time INTEGER NOT NULL,
   entry_spread_z REAL,
   entry_half_life REAL,
   closed_at INTEGER,
   realized_pnl_usd REAL
 );
+CREATE INDEX IF NOT EXISTS idx_active_pairs_open ON active_pairs(closed_at);
 
 CREATE TABLE IF NOT EXISTS pair_state_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,17 +90,21 @@ CREATE TABLE IF NOT EXISTS pair_state_history (
   delta_half_life REAL,
   elapsed_ms INTEGER
 );
+CREATE INDEX IF NOT EXISTS idx_pair_history_pair_ts ON pair_state_history(pair_key, ts);
 
 CREATE TABLE IF NOT EXISTS pairs_snapshot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   as_of INTEGER NOT NULL,
   data_json TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_pairs_snapshot_as_of ON pairs_snapshot(as_of);
+
 CREATE TABLE IF NOT EXISTS markets_snapshot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   as_of INTEGER NOT NULL,
   data_json TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_markets_snapshot_as_of ON markets_snapshot(as_of);
 CREATE TABLE IF NOT EXISTS pairs_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL,
