@@ -1,0 +1,15 @@
+# Nixpacks configuration for Railway
+# Adds Python for native module compilation (better-sqlite3)
+
+[phases.setup]
+nixPkgs = ["python3", "gcc", "gnumake"]
+
+[phases.install]
+cmds = ["npm install -g corepack@0.24.1", "corepack enable", "pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm build"]
+
+[start]
+cmd = "pnpm start:pairs"
+
