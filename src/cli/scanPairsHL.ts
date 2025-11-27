@@ -620,14 +620,33 @@ async function main() {
         await hl.initialize();
         console.log(`✅ Connected to Hyperliquid (${hl.getAllAssetNames().length} assets)\n`);
 
-        // Parse watchlist from environment or use default
+        // Parse watchlist from environment, file, or use default
         let watchlist = DEFAULT_WATCHLIST;
+        let watchlistSource = 'default';
+        
         if (process.env.SCAN_WATCHLIST) {
+            // Priority 1: Environment variable
             watchlist = process.env.SCAN_WATCHLIST.split(',').map(p => {
                 const [a, b] = p.trim().split(':');
                 return [a!, b!] as [string, string];
             });
+            watchlistSource = 'env:SCAN_WATCHLIST';
+        } else {
+            // Priority 2: Try to load from watchlist.json
+            try {
+                const watchlistFile = await fs.readFile('sim_data/watchlist.json', 'utf-8');
+                const data = JSON.parse(watchlistFile);
+                if (data.watchlist && Array.isArray(data.watchlist) && data.watchlist.length > 0) {
+                    watchlist = data.watchlist;
+                    watchlistSource = `file:sim_data/watchlist.json (${data.generatedAt || 'unknown date'})`;
+                }
+            } catch {
+                // Fall through to default
+                watchlistSource = 'default (no watchlist.json found)';
+            }
         }
+        
+        console.log(`📋 Watchlist source: ${watchlistSource}`);
 
         console.log(`📋 Scanning ${watchlist.length} pairs...`);
         console.log(`   Timeframes: Cointegration=${DEFAULT_CONFIG.cointegrationDays}d | Z-Score=${DEFAULT_CONFIG.zScoreDays}d | Hedge=${DEFAULT_CONFIG.hedgeRatioDays}d\n`);

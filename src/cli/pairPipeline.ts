@@ -357,17 +357,22 @@ async function main() {
                 break;
 
             case 'scan':
-                // Scan + alerts only (uses existing watchlist)
-                if (state.watchlist.length === 0) {
-                    // Try to load from watchlist.json
-                    try {
-                        const watchlistFile = path.resolve(process.cwd(), 'sim_data/watchlist.json');
-                        const data = JSON.parse(await fs.readFile(watchlistFile, 'utf-8'));
+                // Scan + alerts only
+                // ALWAYS try to load fresh watchlist from file first
+                try {
+                    const watchlistFile = path.resolve(process.cwd(), 'sim_data/watchlist.json');
+                    const data = JSON.parse(await fs.readFile(watchlistFile, 'utf-8'));
+                    if (data.watchlist && Array.isArray(data.watchlist) && data.watchlist.length > 0) {
                         state.watchlist = data.watchlist;
-                    } catch {
-                        console.log('❌ No watchlist available. Run discovery first.');
-                        process.exit(1);
+                        console.log(`\n📋 Loaded ${state.watchlist.length} pairs from watchlist.json (${data.generatedAt || 'unknown date'})`);
                     }
+                } catch {
+                    console.log('\n⚠️  Could not load watchlist.json, using state watchlist');
+                }
+                
+                if (state.watchlist.length === 0) {
+                    console.log('❌ No watchlist available. Run discovery first.');
+                    process.exit(1);
                 }
 
                 await runScan(state.watchlist);
