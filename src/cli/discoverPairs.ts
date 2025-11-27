@@ -296,20 +296,23 @@ async function hlInfoRequest<T>(payload: any, retries = 3): Promise<T> {
             if (response.status === 429) {
                 // Rate limited - wait and retry
                 const waitTime = Math.pow(2, attempt) * 5000; // 5s, 10s, 20s, 40s
-                console.log(`⏳ Rate limited, waiting ${waitTime / 1000}s before retry...`);
+                log('Rate limited (429), waiting %ds...', waitTime / 1000);
                 await new Promise(r => setTimeout(r, waitTime));
                 continue;
             }
 
             if (!response.ok) {
+                const errorText = await response.text();
+                log('API error %d: %s', response.status, errorText);
                 throw new Error(`Hyperliquid API error: ${response.status}`);
             }
 
-            return response.json() as Promise<T>;
+            const data = await response.json();
+            return data as T;
         } catch (error) {
+            log('Request failed (attempt %d/%d): %s', attempt + 1, retries + 1, error);
             if (attempt === retries) throw error;
             const waitTime = Math.pow(2, attempt) * 5000;
-            console.log(`⏳ Request failed, waiting ${waitTime / 1000}s before retry...`);
             await new Promise(r => setTimeout(r, waitTime));
         }
     }
@@ -476,8 +479,13 @@ async function analyzePair(
         await new Promise(r => setTimeout(r, 500)); // Small delay between requests
         const candles2 = await fetchCandlesDirect(asset2.name, interval, startTime, endTime);
 
+        log('%s/%s: fetched %d and %d candles (need %d)', 
+            asset1.name, asset2.name, candles1.length, candles2.length, 
+            config.minDataDays * barsPerDay);
+
         if (candles1.length < config.minDataDays * barsPerDay ||
             candles2.length < config.minDataDays * barsPerDay) {
+            log('%s/%s: REJECTED - insufficient candles', asset1.name, asset2.name);
             return null;
         }
 
@@ -486,7 +494,11 @@ async function analyzePair(
         const prices2 = candles2.map(c => Number(c.c)).filter(n => Number.isFinite(n) && n > 0);
 
         const dataCheck = ensureMinimumDataRequirements(prices1, prices2);
-        if (!dataCheck.isValid) return null;
+        if (!dataCheck.isValid) {
+            log('%s/%s: REJECTED - data check failed: %s', 
+                asset1.name, asset2.name, dataCheck.reason || 'unknown');
+            return null;
+        }
 
         const { alignedA: alignedPrices1, alignedB: alignedPrices2 } = alignSeries(prices1, prices2);
 
@@ -498,7 +510,12 @@ async function analyzePair(
         const returns2 = logReturns(corrPrices2);
         const correlation = pearson(returns1, returns2) ?? 0;
 
+        log('%s/%s: returns1=%d, returns2=%d, correlation=%.4f', 
+            asset1.name, asset2.name, returns1.length, returns2.length, correlation);
+
         if (correlation < config.minCorrelation) {
+            log('%s/%s: REJECTED - correlation %.4f < %.2f threshold', 
+                asset1.name, asset2.name, correlation, config.minCorrelation);
             return null;
         }
 
@@ -697,9 +714,9 @@ async function discoverPairs(config: DiscoveryConfig): Promise<DiscoveryResult> 
                 if (pair) {
                     sectorPairs.push(pair);
                     allPairs.push(pair);
-                    process.stdout.write(` ✅ corr=${pair.correlation.toFixed(2)}`);
+                    process.stdout.write(` ✅ corr=${pair.correlation.toFixed(2)}\n`);
                 } else {
-                    process.stdout.write(` ❌`);
+                    process.stdout.write(` ❌ (check DEBUG=agent:* for details)\n`);
                 }
 
                 // Rate limiting: candleSnapshot = 20 + (candles/60) weight
