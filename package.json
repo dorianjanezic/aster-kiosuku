@@ -5,8 +5,8 @@
     "type": "module",
     "description": "Grok/Gemini tool-using agent for Aster DEX perps (simulation first)",
     "engines": {
-        "node": ">=20 <21",
-        "pnpm": ">=9 <10"
+        "node": ">=20",
+        "pnpm": ">=9"
     },
     "packageManager": "pnpm@9.15.9",
     "scripts": {
@@ -17,8 +17,19 @@
         "compute:buckets": "pnpm build && node dist/cli/computeBuckets.js",
         "pairs:scan": "pnpm build && node dist/cli/pairsScan.js",
         "pairs:scan:tuned": "PAIRS_ALLOW_CROSS_CATEGORY=1 PAIRS_SIDE_CANDIDATES=50 PAIRS_PER_SECTOR=120 PAIRS_PAIRING_MODE=corr_first PAIRS_INTERVAL=1h PAIRS_LIMIT=1200 PAIRS_MIN_CORR=0.60 PAIRS_MAX_HALFLIFE_DAYS=40 PAIRS_FALLBACK_MAX_HALFLIFE_DAYS=40 PAIRS_MIN_SPREADZ=0.5 PAIRS_FALLBACK_MIN_SPREADZ=0.5 DEBUG=agent:pairs pnpm pairs:scan",
+        "compute:pair": "pnpm build && node dist/cli/computePair.js",
+        "telegram:report": "pnpm build && node dist/cli/telegramPairReport.js",
+        "visualize:pair": "pnpm build && node dist/cli/visualizePair.js",
         "pairs:quick": "pnpm build && node dist/cli/quickEnterBestPair.js",
         "watch:quick": "pnpm build && node dist/cli/quickWatch.js",
+        "scan:pairs:hl": "pnpm build && node dist/cli/scanPairsHL.js",
+        "alerts:pairs:hl": "pnpm build && node dist/cli/pairAlertsHL.js",
+        "discover:pairs": "pnpm build && node dist/cli/discoverPairs.js",
+        "pipeline:full": "pnpm build && node dist/cli/pairPipeline.js full",
+        "pipeline:scan": "pnpm build && node dist/cli/pairPipeline.js scan",
+        "pipeline:discover": "pnpm build && node dist/cli/pairPipeline.js discover",
+        "pipeline:status": "pnpm build && node dist/cli/pairPipeline.js status",
+        "start:pairs": "pnpm build && node dist/cli/pairDaemon.js",
         "reset:data": "node scripts/reset-data.cjs",
         "start": "pnpm reset:data && pnpm build && node dist/cli/fetchMarkets.js && node dist/cli/enrichCategories.js && node dist/cli/computeBuckets.js && node dist/main.js",
         "start:fresh": "pnpm start",
@@ -35,6 +46,7 @@
         "dotenv": "^16.4.5",
         "express": "^4.21.2",
         "better-sqlite3": "^9.6.0",
+        "hyperliquid": "^1.5.4",
         "technicalindicators": "^3.1.0",
         "ws": "^8.18.3",
         "zod": "^3.23.8"
