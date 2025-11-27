@@ -267,6 +267,18 @@ interface PairCandidate {
     qualityScore: number;
 }
 
+interface RejectedPair {
+    pair: [string, string];
+    sector: string;
+    reason: string;
+    details: {
+        correlation?: number;
+        halfLife?: number;
+        isCointegrated?: boolean;
+        rSquared?: number;
+    };
+}
+
 interface DiscoveryResult {
     timestamp: string;
     config: DiscoveryConfig;
@@ -277,6 +289,7 @@ interface DiscoveryResult {
     };
     topPairs: PairCandidate[];
     pairsBySector: Record<string, PairCandidate[]>;
+    rejectedPairs: RejectedPair[];
     watchlist: [string, string][];
 }
 
@@ -460,11 +473,24 @@ async function fetchCandlesDirect(
     return data || [];
 }
 
+interface AnalyzeResult {
+    candidate: PairCandidate | null;
+    rejection: RejectedPair | null;
+}
+
 async function analyzePair(
     asset1: EnrichedAsset,
     asset2: EnrichedAsset,
     config: DiscoveryConfig
-): Promise<PairCandidate | null> {
+): Promise<AnalyzeResult> {
+    const pairName: [string, string] = [asset1.name, asset2.name];
+    const sector = asset1.sector === asset2.sector ? asset1.sector : `${asset1.sector}+${asset2.sector}`;
+    
+    const reject = (reason: string, details: RejectedPair['details'] = {}): AnalyzeResult => ({
+        candidate: null,
+        rejection: { pair: pairName, sector, reason, details }
+    });
+
     try {
         const interval = '1h';
         const barsPerDay = getBarsPerDay(interval);
@@ -479,14 +505,12 @@ async function analyzePair(
         await new Promise(r => setTimeout(r, 500)); // Small delay between requests
         const candles2 = await fetchCandlesDirect(asset2.name, interval, startTime, endTime);
 
-        log('%s/%s: fetched %d and %d candles (need %d)', 
-            asset1.name, asset2.name, candles1.length, candles2.length, 
-            config.minDataDays * barsPerDay);
+        log(`${asset1.name}/${asset2.name}: fetched ${candles1.length} and ${candles2.length} candles (need ${config.minDataDays * barsPerDay})`);
 
         if (candles1.length < config.minDataDays * barsPerDay ||
             candles2.length < config.minDataDays * barsPerDay) {
-            log('%s/%s: REJECTED - insufficient candles', asset1.name, asset2.name);
-            return null;
+            log(`${asset1.name}/${asset2.name}: REJECTED - insufficient candles`);
+            return reject(`Insufficient data: ${candles1.length}/${candles2.length} candles (need ${config.minDataDays * barsPerDay})`);
         }
 
         // Parse candles - direct API returns { t, o, h, l, c, v }
@@ -495,9 +519,8 @@ async function analyzePair(
 
         const dataCheck = ensureMinimumDataRequirements(prices1, prices2);
         if (!dataCheck.isValid) {
-            log('%s/%s: REJECTED - data check failed: %s', 
-                asset1.name, asset2.name, dataCheck.reason || 'unknown');
-            return null;
+            log(`${asset1.name}/${asset2.name}: REJECTED - data check failed: ${dataCheck.reason || 'unknown'}`);
+            return reject(`Data quality: ${dataCheck.reason || 'unknown'}`);
         }
 
         const { alignedA: alignedPrices1, alignedB: alignedPrices2 } = alignSeries(prices1, prices2);
@@ -510,13 +533,11 @@ async function analyzePair(
         const returns2 = logReturns(corrPrices2);
         const correlation = pearson(returns1, returns2) ?? 0;
 
-        log('%s/%s: returns1=%d, returns2=%d, correlation=%.4f', 
-            asset1.name, asset2.name, returns1.length, returns2.length, correlation);
+        log(`${asset1.name}/${asset2.name}: returns1=${returns1.length}, returns2=${returns2.length}, correlation=${correlation.toFixed(4)}`);
 
         if (correlation < config.minCorrelation) {
-            log('%s/%s: REJECTED - correlation %.4f < %.2f threshold', 
-                asset1.name, asset2.name, correlation, config.minCorrelation);
-            return null;
+            log(`${asset1.name}/${asset2.name}: REJECTED - correlation ${correlation.toFixed(4)} < ${config.minCorrelation} threshold`);
+            return reject(`Low correlation: ${correlation.toFixed(3)} < ${config.minCorrelation}`, { correlation });
         }
 
         // Cointegration (90-day)
@@ -527,7 +548,10 @@ async function analyzePair(
         const cointegLog2 = logPrices2.slice(-Math.min(logPrices2.length, cointegBars));
 
         const olsResult = olsRegression(cointegLog1, cointegLog2);
-        if (!olsResult || !Number.isFinite(olsResult.slope)) return null;
+        if (!olsResult || !Number.isFinite(olsResult.slope)) {
+            log(`${asset1.name}/${asset2.name}: REJECTED - OLS regression failed`);
+            return reject('OLS regression failed', { correlation });
+        }
 
         const hedgeRatio = olsResult.slope;
         const rSquared = olsResult.rSquared;
@@ -544,9 +568,14 @@ async function analyzePair(
         const isCointegrated = adfResult?.isStationary ?? false;
         const halfLife = adfResult?.halfLife ?? null;
 
+        log(`${asset1.name}/${asset2.name}: OLS β=${hedgeRatio.toFixed(3)} R²=${rSquared.toFixed(3)}, ADF stationary=${isCointegrated} halfLife=${halfLife?.toFixed(1) ?? 'null'}`);
+
         // Filter by half-life
         if (halfLife !== null && halfLife > config.maxHalfLife) {
-            return null;
+            log(`${asset1.name}/${asset2.name}: REJECTED - halfLife ${halfLife.toFixed(1)} > ${config.maxHalfLife} max`);
+            return reject(`Half-life too long: ${halfLife.toFixed(0)}d > ${config.maxHalfLife}d max`, { 
+                correlation, halfLife, isCointegrated, rSquared 
+            });
         }
 
         // Calculate quality score for the pair
@@ -564,22 +593,25 @@ async function analyzePair(
         );
 
         return {
-            pair: [asset1.name, asset2.name],
-            sector: asset1.sector === asset2.sector ? asset1.sector : `${asset1.sector}+${asset2.sector}`,
-            correlation,
-            isCointegrated,
-            halfLifeDays: halfLife,
-            hedgeRatio,
-            rSquared,
-            combinedVolume,
-            combinedOI,
-            fundingDelta,
-            qualityScore
+            candidate: {
+                pair: pairName,
+                sector,
+                correlation,
+                isCointegrated,
+                halfLifeDays: halfLife,
+                hedgeRatio,
+                rSquared,
+                combinedVolume,
+                combinedOI,
+                fundingDelta,
+                qualityScore
+            },
+            rejection: null
         };
 
     } catch (error) {
-        log('Error analyzing pair %s/%s: %O', asset1.name, asset2.name, error);
-        return null;
+        log(`Error analyzing pair ${asset1.name}/${asset2.name}:`, error);
+        return reject(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
@@ -678,6 +710,7 @@ async function discoverPairs(config: DiscoveryConfig): Promise<DiscoveryResult> 
     console.log('\n🔍 Analyzing pair candidates...');
 
     const allPairs: PairCandidate[] = [];
+    const allRejections: RejectedPair[] = [];
     const pairsBySector: Record<string, PairCandidate[]> = {};
 
     // Count total pairs to analyze
@@ -707,16 +740,17 @@ async function discoverPairs(config: DiscoveryConfig): Promise<DiscoveryResult> 
                 pairCount++;
 
                 const progress = `[${pairCount}/${totalPairs}]`;
-                log('%s Analyzing %s/%s (%s)', progress, asset1.name, asset2.name, sector);
+                log(`${progress} Analyzing ${asset1.name}/${asset2.name} (${sector})`);
                 process.stdout.write(`\r   ${progress} ${asset1.name}/${asset2.name}...`);
 
-                const pair = await analyzePair(asset1, asset2, config);
-                if (pair) {
-                    sectorPairs.push(pair);
-                    allPairs.push(pair);
-                    process.stdout.write(` ✅ corr=${pair.correlation.toFixed(2)}\n`);
-                } else {
-                    process.stdout.write(` ❌ (check DEBUG=agent:* for details)\n`);
+                const result = await analyzePair(asset1, asset2, config);
+                if (result.candidate) {
+                    sectorPairs.push(result.candidate);
+                    allPairs.push(result.candidate);
+                    process.stdout.write(` ✅ corr=${result.candidate.correlation.toFixed(2)}\n`);
+                } else if (result.rejection) {
+                    allRejections.push(result.rejection);
+                    process.stdout.write(` ❌ ${result.rejection.reason}\n`);
                 }
 
                 // Rate limiting: candleSnapshot = 20 + (candles/60) weight
@@ -751,13 +785,15 @@ async function discoverPairs(config: DiscoveryConfig): Promise<DiscoveryResult> 
                 // Skip same sector (already done)
                 if (asset1.sector === asset2.sector) continue;
 
-                const pair = await analyzePair(asset1, asset2, {
+                const result = await analyzePair(asset1, asset2, {
                     ...config,
                     minCorrelation: config.crossSectorMinCorr
                 });
 
-                if (pair) {
-                    allPairs.push(pair);
+                if (result.candidate) {
+                    allPairs.push(result.candidate);
+                } else if (result.rejection) {
+                    allRejections.push(result.rejection);
                 }
 
                 // Same rate limiting as intra-sector
@@ -773,6 +809,12 @@ async function discoverPairs(config: DiscoveryConfig): Promise<DiscoveryResult> 
     // Generate watchlist
     const watchlist: [string, string][] = topPairs.map(p => p.pair);
 
+    // Sort rejections by sector then pair name for readability
+    allRejections.sort((a, b) => {
+        if (a.sector !== b.sector) return a.sector.localeCompare(b.sector);
+        return `${a.pair[0]}/${a.pair[1]}`.localeCompare(`${b.pair[0]}/${b.pair[1]}`);
+    });
+
     return {
         timestamp: new Date().toISOString(),
         config,
@@ -781,6 +823,7 @@ async function discoverPairs(config: DiscoveryConfig): Promise<DiscoveryResult> 
             eligibleAssets: eligibleAssets.length,
             sectorBreakdown
         },
+        rejectedPairs: allRejections,
         topPairs,
         pairsBySector,
         watchlist
@@ -835,6 +878,41 @@ function formatDiscoveryResults(result: DiscoveryResult): string {
         lines.push(`    ['${a}', '${b}'],`);
     });
     lines.push(']');
+
+    // Add rejection summary
+    if (result.rejectedPairs.length > 0) {
+        lines.push('');
+        lines.push('═══════════════════════════════════════════════════════════════');
+        lines.push(`REJECTED PAIRS (${result.rejectedPairs.length} total)`);
+        lines.push('─────────────────────────────────────────────────────────────────');
+        
+        // Group by reason
+        const byReason = new Map<string, RejectedPair[]>();
+        for (const rp of result.rejectedPairs) {
+            // Extract reason category (first part before colon)
+            const category = rp.reason.split(':')[0] || rp.reason;
+            const list = byReason.get(category) || [];
+            list.push(rp);
+            byReason.set(category, list);
+        }
+
+        for (const [reason, pairs] of byReason) {
+            lines.push(`\n${reason} (${pairs.length}):`);
+            // Show up to 10 examples per category
+            const examples = pairs.slice(0, 10);
+            for (const rp of examples) {
+                const pairStr = `${rp.pair[0]}/${rp.pair[1]}`.padEnd(14);
+                const details = [];
+                if (rp.details.correlation !== undefined) details.push(`corr=${rp.details.correlation.toFixed(2)}`);
+                if (rp.details.halfLife !== undefined) details.push(`HL=${rp.details.halfLife.toFixed(0)}d`);
+                if (rp.details.isCointegrated !== undefined) details.push(`coint=${rp.details.isCointegrated ? '✅' : '❌'}`);
+                lines.push(`   ${pairStr} ${details.join(' | ')}`);
+            }
+            if (pairs.length > 10) {
+                lines.push(`   ... and ${pairs.length - 10} more`);
+            }
+        }
+    }
 
     return lines.join('\n');
 }
